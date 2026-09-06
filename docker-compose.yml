@@ -1,0 +1,138 @@
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: flux
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d flux"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - valkeydata:/data
+    command: valkey-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    restart: unless-stopped
+    ports:
+      - "5672:5672"    # AMQP port (services connect here)
+      - "15672:15672"  # management UI: http://localhost:15672 (guest/guest)
+    volumes:
+      - rabbitdata:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  gateway:
+    build: ./services/gateway
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    env_file:
+      - ./services/gateway/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+
+  catalog:
+    build: ./services/catalog
+    restart: unless-stopped
+    ports:
+      - "4001:4001"
+    env_file:
+      - ./services/catalog/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  inventory:
+    build: ./services/inventory
+    restart: unless-stopped
+    ports:
+      - "4002:4002"
+    env_file:
+      - ./services/inventory/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  order:
+    build: ./services/order
+    restart: unless-stopped
+    ports:
+      - "4003:4003"
+    env_file:
+      - ./services/order/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  payment:
+    build: ./services/payment
+    restart: unless-stopped
+    ports:
+      - "4004:4004"
+    env_file:
+      - ./services/payment/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  delivery:
+    build: ./services/delivery
+    restart: unless-stopped
+    ports:
+      - "4005:4005"
+    env_file:
+      - ./services/delivery/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  notification:
+    build: ./services/notification
+    restart: unless-stopped
+    env_file:
+      - ./services/notification/.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  valkeydata:
+  rabbitdata:
