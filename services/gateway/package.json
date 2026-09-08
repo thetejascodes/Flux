@@ -2,18 +2,24 @@
   "name": "gateway",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/server.js",
   "scripts": {
+    "dev": "tsc-watch --onSuccess \"node dist/server.js\"",
+    "build": "tsc",
+    "start": "node dist/server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
   "dependencies": {
     "express": "^5.2.1"
   },
   "devDependencies": {
-    "@types/express": "^5.0.6"
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.5.0",
+    "tsc-watch": "^7.2.1",
+    "typescript": "^7.0.2"
   }
 }
