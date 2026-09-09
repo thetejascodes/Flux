@@ -7,6 +7,9 @@
     "dev": "tsc-watch --onSuccess \"node dist/server.js\"",
     "build": "tsc",
     "start": "node dist/server.js",
+    "db:migrate": "drizzle-kit migrate",
+    "db:generate": "drizzle-kit generate",
+    "db:studio": "drizzle-kit studio",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

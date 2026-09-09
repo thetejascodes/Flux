@@ -58,79 +58,83 @@ services:
       valkey:
         condition: service_healthy
 
-  catalog:
-    build: ./services/catalog
-    restart: unless-stopped
-    ports:
-      - "4001:4001"
-    env_file:
-      - ./services/catalog/.env
-    depends_on:
-      postgres:
-        condition: service_healthy
+  # Uncomment each block below once that service actually has code, a
+  # package.json, and a .env file — trying to build/start a service before
+  # it exists is what caused the earlier "env file not found" errors.
 
-  inventory:
-    build: ./services/inventory
-    restart: unless-stopped
-    ports:
-      - "4002:4002"
-    env_file:
-      - ./services/inventory/.env
-    depends_on:
-      postgres:
-        condition: service_healthy
-      valkey:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
+  # catalog:
+  #   build: ./services/catalog
+  #   restart: unless-stopped
+  #   ports:
+  #     - "4001:4001"
+  #   env_file:
+  #     - ./services/catalog/.env
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
 
-  order:
-    build: ./services/order
-    restart: unless-stopped
-    ports:
-      - "4003:4003"
-    env_file:
-      - ./services/order/.env
-    depends_on:
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
+  # inventory:
+  #   build: ./services/inventory
+  #   restart: unless-stopped
+  #   ports:
+  #     - "4002:4002"
+  #   env_file:
+  #     - ./services/inventory/.env
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     valkey:
+  #       condition: service_healthy
+  #     rabbitmq:
+  #       condition: service_healthy
 
-  payment:
-    build: ./services/payment
-    restart: unless-stopped
-    ports:
-      - "4004:4004"
-    env_file:
-      - ./services/payment/.env
-    depends_on:
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
+  # order:
+  #   build: ./services/order
+  #   restart: unless-stopped
+  #   ports:
+  #     - "4003:4003"
+  #   env_file:
+  #     - ./services/order/.env
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     rabbitmq:
+  #       condition: service_healthy
 
-  delivery:
-    build: ./services/delivery
-    restart: unless-stopped
-    ports:
-      - "4005:4005"
-    env_file:
-      - ./services/delivery/.env
-    depends_on:
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
+  # payment:
+  #   build: ./services/payment
+  #   restart: unless-stopped
+  #   ports:
+  #     - "4004:4004"
+  #   env_file:
+  #     - ./services/payment/.env
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     rabbitmq:
+  #       condition: service_healthy
 
-  notification:
-    build: ./services/notification
-    restart: unless-stopped
-    env_file:
-      - ./services/notification/.env
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
+  # delivery:
+  #   build: ./services/delivery
+  #   restart: unless-stopped
+  #   ports:
+  #     - "4005:4005"
+  #   env_file:
+  #     - ./services/delivery/.env
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     rabbitmq:
+  #       condition: service_healthy
+
+  # notification:
+  #   build: ./services/notification
+  #   restart: unless-stopped
+  #   env_file:
+  #     - ./services/notification/.env
+  #   depends_on:
+  #     rabbitmq:
+  #       condition: service_healthy
 
 volumes:
   pgdata:
