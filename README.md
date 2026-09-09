@@ -2,7 +2,9 @@
 
 > *One order. Six services. Zero excuses.*
 
-**Flux** is a quick-commerce platform built the way the real thing is built — as a distributed system of independent services that reserve stock, move money, route deliveries, and recover cleanly when any single piece fails. Not a CRUD storefront with a cart bolted on. A system designed to survive the moment two people try to buy the last item at the same second, or a payment succeeds while the warehouse goes dark.
+Flux is a quick-commerce platform built as true microservices — not a CRUD storefront. Saga orchestration, zero-overselling concurrency, geospatial routing.
+
+**Flux** is built the way the real thing is built — as a distributed system of independent services (Catalog, Inventory, Order, Payment, Delivery) that reserve stock, move money, route deliveries, and recover cleanly when any single piece fails. Not a CRUD storefront with a cart bolted on. A system designed to survive the moment two people try to buy the last item at the same second, or a payment succeeds while the warehouse goes dark. Built with TypeScript, Node.js, PostgreSQL, Redis, and RabbitMQ/Kafka.
 
 **Status:** 🚧 In Planning — architecture defined, build not yet started.
 
@@ -207,4 +209,4 @@ Deliberately out of scope, so the project ships instead of sprawling:
 
 ---
 
-*A masterpiece isn't the one with the most features. It's the one where every piece exists on purpose.*# Flux
+*A masterpiece isn't the one with the most features. It's the one where every piece exists on purpose.*
