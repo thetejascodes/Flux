@@ -12,6 +12,9 @@ function required(key: string) {
 
 const config = {
   port: Number(optional("PORT", "8000")),
+  database: {
+    url: required("DATABASE_URL"),
+  },
 };
 
 export default config;
