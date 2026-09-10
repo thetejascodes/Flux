@@ -9,7 +9,7 @@ const sendOtp = async(phone:string,code:string)=>{
         return;
     }
      await client.messages.create({
-        body:`Your Unsaid verification code is: ${code}`,
+        body:`Your Flux verification code is: ${code}`,
         from:config.twilio.fromNumber,
         to:phone,
     })
