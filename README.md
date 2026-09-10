@@ -1,210 +1,222 @@
 # Flux
 
-> *One order. Six services. Zero excuses.*
+Flux is a distributed quick-commerce platform built as a monorepo of independent services. The goal is to model the core problems behind modern order systems: inventory reservation under concurrency, service-to-service coordination, delivery routing, and failure recovery without a single shared database.
 
-**Flux** is a quick-commerce platform built the way the real thing is built — as a distributed system of independent services that reserve stock, move money, route deliveries, and recover cleanly when any single piece fails. Not a CRUD storefront with a cart bolted on. A system designed to survive the moment two people try to buy the last item at the same second, or a payment succeeds while the warehouse goes dark.
+## Status
 
-**Status:** 🚧 In Planning — architecture defined, build not yet started.
+This repository is now in a working foundational state:
 
----
+- Docker infrastructure is configured and bootstraps the local platform environment.
+- PostgreSQL, Valkey, and RabbitMQ are defined in Docker Compose.
+- The gateway service is implemented and can start as a TypeScript Express app.
+- Database initialization scripts create service-specific PostgreSQL databases.
+- The project is organized as a multi-service architecture with clear separation of responsibilities.
 
-## 📋 Table of Contents
-
-- [Vision](#-vision)
-- [What Makes This Different](#-what-makes-this-different)
-- [Architecture](#-architecture)
-- [Repository Structure](#-repository-structure)
-- [Services](#-services)
-- [Authentication & Service Trust](#-authentication--service-trust)
-- [Tech Stack](#-tech-stack)
-- [Core Hard Problems](#-core-hard-problems)
-- [Feature Roadmap](#-feature-roadmap)
-- [Non-Goals (for v1)](#-non-goals-for-v1)
-- [Architecture Decisions](#-architecture-decisions)
+The system is not yet feature-complete as a full commerce platform, but the base architecture and runtime scaffolding are now in place.
 
 ---
 
-## 🎯 Vision
+## What is complete
 
-Most portfolio e-commerce projects are a product table, a cart, and a checkout form — the same tutorial rebuilt a thousand times. Flux exists to demonstrate something different: that a single engineer can design and reason about the same category of hard problems that companies like Amazon and Flipkart solve at scale — inventory consistency under concurrency, transactional integrity across independent services, and real-time delivery routing — without needing a team of thousands to prove it.
+### Infrastructure
+- Docker Compose stack for local development
+- PostgreSQL instance with bootstrapped service databases
+- Valkey instance for cache and future reservation/lock workflows
+- RabbitMQ instance for event-driven service communication
+- Health-checked container startup flow
 
-The goal isn't feature count. It's depth: a small number of services, each doing one thing correctly, wired together in a way that survives failure instead of pretending failure doesn't happen.
+### Gateway foundation
+- Express app configured with JSON parsing
+- Centralized config loading from environment variables
+- Error middleware
+- Health endpoint at `/health`
+- Drizzle + PostgreSQL integration configured for future service data access
+- Twilio-ready OTP configuration for authentication flows
 
----
+### Monorepo structure
+- `services/` organized by domain
+- Each service has its own package and TypeScript setup
+- Shared architecture supports future expansion without a single app monolith
 
-## ✨ What Makes This Different
-
-- **No shared database.** Every service owns its data. No service reaches into another's tables.
-- **Event-driven, not request-chained.** Services communicate through a message broker, not a waterfall of synchronous HTTP calls that collapse the moment one link is slow.
-- **Failure is a first-class case.** If payment succeeds and inventory fails, the system compensates — it doesn't leave the order in a broken half-state.
-- **Built for quick-commerce, not generic e-commerce.** Multiple dark-store/warehouse locations, nearest-stock assignment, and live delivery tracking — not just "add to cart, ship in 5 days."
-- **Observable by design.** Every request can be traced end-to-end across every service it touched.
-
----
-
-## 🏗️ Architecture
-
-```
-                        ┌─────────────────┐
-                        │   API Gateway     │
-                        │  (auth, routing)  │
-                        └────────┬──────────┘
-                                 │
-        ┌────────────┬──────────┼──────────┬────────────┐
-        ▼            ▼          ▼          ▼            ▼
-   ┌─────────┐  ┌──────────┐ ┌────────┐ ┌─────────┐ ┌──────────────┐
-   │ Catalog │  │Inventory │ │ Order  │ │Payment  │ │  Delivery    │
-   │ Service │  │ Service  │ │Service │ │Service  │ │  Service     │
-   └─────────┘  └──────────┘ └───┬────┘ └─────────┘ └──────────────┘
-                                  │
-                          ┌───────▼────────┐
-                          │  Event Broker   │
-                          │ (Kafka/RabbitMQ)│
-                          └───────┬────────┘
-                                  │
-                          ┌───────▼────────┐
-                          │  Notification   │
-                          │  Service        │
-                          └────────────────┘
-```
-
-Each service owns its own PostgreSQL database. Synchronous calls (via the gateway) are used only where an immediate response is required (e.g. "is this in stock right now?"); everything else — order state changes, payment confirmations, delivery assignment — flows as **events** through the broker instead of direct service-to-service calls. This is what lets services fail independently without taking each other down, and what makes the order saga (below) possible.
+### Project conventions
+- TypeScript-first service architecture
+- Environment-based config management
+- Database-per-service design model
+- Event-driven extension path for order and payment workflows
 
 ---
 
-## 📁 Repository Structure
+## Repository structure
 
-A single monorepo, not six separate repos — each service is still fully independent (own dependencies, own database, own Dockerfile), just co-located for easier solo development:
-
-```
+```text
 flux/
-├── services/
-│   ├── gateway/        # auth validation, routing
-│   ├── catalog/        # products, search
-│   ├── inventory/      # stock, reservations
-│   ├── order/           # saga orchestrator
-│   ├── payment/        # charges, webhooks
-│   ├── delivery/       # routing, ETA, tracking
-│   └── notification/   # event-driven alerts
-├── docker-compose.yml   # spins up every service + Postgres + Redis + broker together
+├── docker-compose.yml
+├── README.md
 ├── docs/
 │   └── adr/
-└── README.md
+├── scripts/
+│   └── init-databases.sh
+├── services/
+│   ├── catalog/
+│   ├── delivery/
+│   ├── gateway/
+│   ├── inventory/
+│   ├── notification/
+│   ├── order/
+│   ├── payment/
+│   └── ...
+└──
 ```
 
-Each folder under `services/` is a self-contained Express/TypeScript app — the same code shape as any monolith, just running as its own process and talking to the others only over the network (HTTP through the gateway, or events through the broker).
-
 ---
 
-## 🧩 Services
+## Active stack
 
-| Service | Responsibility |
+| Layer | Technology |
 | --- | --- |
-| **API Gateway** | Single entry point, request routing, auth token validation |
-| **Catalog Service** | Products, categories, pricing, search index |
-| **Inventory Service** | Per-location stock, reservations with timeout, concurrency-safe decrements |
-| **Order Service** | Order lifecycle, the saga orchestrator that coordinates the other services |
-| **Payment Service** | Payment processing, idempotency keys, webhook handling and reconciliation |
-| **Delivery Service** | Nearest dark-store assignment, delivery partner assignment, ETA, live tracking |
-| **Notification Service** | Order-status updates via SMS/push, driven entirely by events |
+| Language | TypeScript |
+| Runtime | Node.js + Express |
+| Database | PostgreSQL |
+| Cache | Valkey |
+| Messaging | RabbitMQ |
+| Containerization | Docker + Docker Compose |
+| Schema tooling | Drizzle ORM |
 
 ---
 
-## 🔐 Authentication & Service Trust
+## Current architecture
 
-Flux does **not** use full OpenID Connect — that's the right tool for an external identity provider serving multiple third-party clients (which is what a separate project, Grantly, is for), not for a single product's internal services.
+```text
+Client
+  |
+  v
+API Gateway
+  |
+  +--> Catalog
+  +--> Inventory
+  +--> Order
+  +--> Payment
+  +--> Delivery
+  +--> Notification
 
-Instead:
-- **User login** issues a plain JWT (access + refresh token pair), signed with a service-owned secret.
-- **The Gateway validates every incoming request's token** before it reaches any service — downstream services trust the gateway rather than re-authenticating every call.
-- **Signing keys are versioned (`kid`)** so the secret can be rotated later without invalidating active sessions — not built in v1, but the token structure is designed to support it without a rewrite.
+Supporting infrastructure:
+- PostgreSQL per service model
+- Valkey for transient caching and lock semantics
+- RabbitMQ for async communication
+```
 
-This is the standard, correct approach for a system of this shape — OIDC would be over-engineering here, not a stronger choice.
+This architecture is designed so each service owns its own data and responsibilities, while still coordinating through the gateway and message bus.
 
 ---
 
-## 🛠️ Tech Stack
+## Quick start
 
-| Layer | Technology | Purpose |
+### 1) Start the platform services
+
+```bash
+docker compose up -d
+```
+
+This starts:
+- PostgreSQL on `localhost:5432`
+- Valkey on `localhost:6379`
+- RabbitMQ on `localhost:5672`
+- RabbitMQ management UI on `http://localhost:15672`
+- Gateway service on `http://localhost:4000`
+
+### 2) Start the gateway locally
+
+From the gateway folder:
+
+```bash
+cd services/gateway
+npm install
+npm run dev
+```
+
+### 3) Verify it is alive
+
+```bash
+curl http://localhost:4000/health
+```
+
+Expected response:
+
+```json
+{ "status": "ok" }
+```
+
+---
+
+## Service responsibilities
+
+| Service | Status | Responsibility |
 | --- | --- | --- |
-| **Language** | TypeScript (strict mode) | Type-safe code across all services |
-| **Runtime** | Node.js 20+, Express | Per-service HTTP APIs |
-| **Database** | PostgreSQL (one instance per service) | Durable, service-owned data |
-| **Cache / Locking** | Redis | Stock reservation TTLs, distributed locks |
-| **Event Broker** | Kafka or RabbitMQ | Async communication between services |
-| **Search** | Meilisearch | Product catalog search |
-| **Geospatial** | PostGIS or haversine queries | Nearest-warehouse and nearest-driver assignment |
-| **Real-time** | WebSocket | Live order and delivery tracking |
-| **Tracing** | OpenTelemetry + Jaeger | End-to-end request tracing across services |
-| **Dev Tooling** | Docker Compose | Local multi-service infrastructure |
+| Gateway | Complete foundation | Entry point, config, request validation, health checks |
+| Catalog | Planned | Product inventory and item metadata |
+| Inventory | Planned | Stock, reservations, and quantity checks |
+| Order | Planned | Order lifecycle and saga coordination |
+| Payment | Planned | Payment processing and reconciliation |
+| Delivery | Planned | Routing, dispatch, and ETA logic |
+| Notification | Planned | Event-driven alerts and messaging |
 
 ---
 
-## 🔥 Core Hard Problems
+## What is still pending
 
-These are the three problems Flux is actually built to solve well — everything else in the system exists to support them.
+The following are intentionally not fully implemented yet:
 
-1. **Zero overselling under concurrency** — Two buyers hitting "buy" on the last unit at the same instant must never both succeed. Solved with reservation-with-timeout plus concurrency-safe stock decrements, proven under load test.
-2. **The order saga** — Order placed → inventory reserved → payment charged → delivery assigned. If any step fails, prior steps are compensated (stock released, payment refunded) instead of leaving a broken order behind.
-3. **Nearest-stock, nearest-driver routing** — Orders are assigned to the closest dark store with available stock and the closest available delivery partner, with a real ETA calculation — the piece that makes this quick-commerce rather than generic e-commerce.
+- real product catalog APIs
+- inventory reservation logic
+- order orchestration workflow
+- payment processing flow
+- delivery assignment logic
+- notification consumers
+- end-to-end user checkout flows
+- robust auth/session lifecycle beyond the infrastructure groundwork
 
----
-
-## 🗺️ Feature Roadmap
-
-### Phase 0 — Foundation
-- [ ] Repo structure, Docker Compose infra (Postgres, Redis, broker)
-- [ ] API Gateway with auth
-- [ ] Catalog Service with search
-
-### Phase 1 — Inventory & Concurrency
-- [ ] Per-location stock model
-- [ ] Reservation with timeout (Redis TTL)
-- [ ] Load test proving zero overselling
-- [ ] ADR: concurrency approach and trade-offs
-
-### Phase 2 — Order Saga
-- [ ] Order Service as saga orchestrator
-- [ ] Payment Service with idempotency + webhooks
-- [ ] Compensating transactions on failure
-- [ ] Event-driven communication via broker
-- [ ] Distributed tracing across services
-
-### Phase 3 — Delivery & Routing
-- [ ] Multi-warehouse/dark-store model
-- [ ] Nearest-stock + nearest-driver assignment
-- [ ] ETA calculation
-- [ ] Live delivery tracking over WebSocket
-
-### Phase 4 — Presentation
-- [ ] Notification Service
-- [ ] Minimal dashboard showing live order flow
-- [ ] Case study write-up: architecture, hard problems solved, trade-offs
+This is a normal phase for a distributed system project: the base platform, runtime scaffolding, and service boundaries are established first, and the domain flows are added next.
 
 ---
 
-## 🚫 Non-Goals (for v1)
+## Design direction
 
-Deliberately out of scope, so the project ships instead of sprawling:
+Flux follows a service-owned, event-driven approach instead of a single shared-database app. The current repository structure is aligned with the following principles:
 
-- Seller/marketplace onboarding (multi-vendor support)
-- Full admin back-office and analytics dashboards
-- Recommendation engine / personalization
-- Native mobile apps (web + WebSocket tracking is enough to prove the backend)
-- Internationalization / multi-currency
-
----
-
-## 📐 Architecture Decisions
-
-*(To be written as the project progresses, following the same ADR format used in [Unsaid](../unsaid) and [Grantly](../grantly).)*
-
-- ADR-0001: Database-per-service vs shared database
-- ADR-0002: Concurrency strategy for inventory reservation
-- ADR-0003: Saga pattern — choreography vs orchestration
-- ADR-0004: Message broker choice (Kafka vs RabbitMQ)
-- ADR-0005: Geospatial routing approach
+- no hidden cross-service database access
+- clear ownership of domain state
+- async communication where consistency is eventually coordinated
+- readiness for saga-driven workflows and compensating actions
+- infrastructure that can be run locally as a realistic development environment
 
 ---
 
-*A masterpiece isn't the one with the most features. It's the one where every piece exists on purpose.*# Flux
+## Roadmap
+
+### Phase 1: API and service layering
+- complete gateway auth and routing structure
+- build catalog service endpoints
+- structure inventory and order domains
+
+### Phase 2: transactional workflows
+- reserve inventory with timeout semantics
+- robust order lifecycle management
+- payment integration and compensation handling
+
+### Phase 3: delivery and distribution
+- assign nearest available stock and couriers
+- ETA and tracking workflows
+- notification events for live updates
+
+### Phase 4: polish and validation
+- end-to-end tests
+- resilience and failure-case simulation
+- operational observability and documentation
+
+---
+
+## Summary
+
+Flux is no longer just an abstract idea. The repository has a real monorepo structure, local infrastructure, service bootstrap points, and a working gateway foundation. The next step is to turn that foundation into the actual business flows that define the quick-commerce platform itself.
+
+The project is not “finished” as a product yet, but it is now meaningfully “started” in a realistic, extensible way.
