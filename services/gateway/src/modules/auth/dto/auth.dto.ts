@@ -20,4 +20,4 @@ class LoginDto extends BaseDto {
 export type SignUpInput = z.infer<typeof SignUpDto.schema>;
 export type LoginInput = z.infer<typeof LoginDto.schema>;
 
-export { SignUpDto };
+export { SignUpDto,LoginDto };
