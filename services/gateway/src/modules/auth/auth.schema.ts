@@ -1,4 +1,4 @@
-import { pgTable,uuid,varchar,pgEnum,timestamp } from "drizzle-orm/pg-core";
+import { pgTable,uuid,varchar,pgEnum,timestamp,boolean } from "drizzle-orm/pg-core";
 
 export const authProviderEnum = pgEnum("auth_provider", ["email", "otp", "google"]);
 
@@ -21,4 +21,14 @@ export const sessions = pgTable("sessions", {
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+export const otpCodes = pgTable("otp_codes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  phoneHash: varchar("phone_hash", { length: 255 }).notNull(),
+  codeHash: varchar("code_hash", { length: 255 }).notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  consumed: boolean("consumed").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 
