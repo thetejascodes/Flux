@@ -15,6 +15,13 @@ const config = {
   database: {
     url: required("DATABASE_URL"),
   },
+  twilio: {
+    accountSid: optional("TWILIO_ACCOUNT_SID", ""),
+    apiKeySid: optional("TWILIO_API_KEY_SID", ""),
+    apiKeySecret: optional("TWILIO_API_KEY_SECRET", ""),
+    fromNumber: optional("TWILIO_FROM_NUMBER", ""),
+  },
+  otpStubMode: optional("OTP_STUB_MODE", "true"),
 };
 
 export default config;
