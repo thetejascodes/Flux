@@ -1,4 +1,6 @@
-import { pgTable,uuid,varchar, } from "drizzle-orm/pg-core";
+import { pgTable,uuid,varchar,pgEnum } from "drizzle-orm/pg-core";
+
+export const authProviderEnum = pgEnum("auth_provider", ["email", "otp", "google"]);
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -6,6 +8,7 @@ export const users = pgTable("users", {
   phone: varchar("phone", { length: 20 }).unique(),
   passwordHash: varchar("password_hash", { length: 255 }),
   googleId: varchar("google_id", { length: 255 }).unique(),
-  provider: varchar("provider", { length: 20 }).notNull(),
+  provider: authProviderEnum("provider").notNull(),
   role: varchar("role", { length: 20 }).default("user"),
 });
+

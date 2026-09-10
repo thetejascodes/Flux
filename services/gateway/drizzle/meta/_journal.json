@@ -8,6 +8,13 @@
       "when": 1788987521414,
       "tag": "0000_lyrical_tarot",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789021142431,
+      "tag": "0001_thick_big_bertha",
+      "breakpoints": true
     }
   ]
 }
