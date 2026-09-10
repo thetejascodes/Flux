@@ -1,6 +1,7 @@
 import { pgTable,uuid,varchar,pgEnum,timestamp,boolean } from "drizzle-orm/pg-core";
 
 export const authProviderEnum = pgEnum("auth_provider", ["email", "otp", "google"]);
+export const userRoleEnum = pgEnum("user_role", ["user", "admin"]);
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -9,7 +10,8 @@ export const users = pgTable("users", {
   passwordHash: varchar("password_hash", { length: 255 }),
   googleId: varchar("google_id", { length: 255 }).unique(),
   provider: authProviderEnum("provider").notNull(),
-  role: varchar("role", { length: 20 }).default("user"),
+  role: userRoleEnum("role").notNull().default("user"),
+  createdAt:timestamp("created_at",{withTimezone:true}).defaultNow().notNull(),
 });
 
 export const sessions = pgTable("sessions", {
