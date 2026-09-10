@@ -15,6 +15,13 @@
       "when": 1789021142431,
       "tag": "0001_thick_big_bertha",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789021243250,
+      "tag": "0002_empty_inertia",
+      "breakpoints": true
     }
   ]
 }
