@@ -101,3 +101,4 @@ const verifyOtp = async (phone: string, submittedCode: string) => {
   return {accessToken,refreshToken,user}
 };
 
+export{ requestOtp,verifyOtp }
