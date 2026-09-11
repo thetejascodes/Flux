@@ -4,7 +4,6 @@ import { authIdentities, otpCodes, sessions, users } from "../common/db/schema.j
 import crypto, { randomInt } from "crypto";
 import { count, eq, and, gt, gte, desc } from "drizzle-orm";
 import ApiError from "../common/utils/api-error.js";
-import Api from "twilio/lib/rest/Api.js";
 import {
   generateAccessToken,
   verifyAccessToken,
@@ -101,3 +100,4 @@ const verifyOtp = async (phone: string, submittedCode: string) => {
   });
   return {accessToken,refreshToken,user}
 };
+
