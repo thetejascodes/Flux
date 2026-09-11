@@ -5,11 +5,12 @@ import crypto, { randomInt } from "crypto";
 import { count, eq, and, gt, desc } from "drizzle-orm";
 import ApiError from "../common/utils/api-error.js";
 import { issueTokens } from "./auth/auth.service.js";
+import type{ RequestOtpInput, VerifyOtpInput } from "./auth/dto/otp.dto.js";
 
 const hashToken = (token: string) =>
   crypto.createHash("sha256").update(token).digest("hex");
 
-const requestOtp = async (phone: string) => {
+const requestOtp = async ({phone}:RequestOtpInput) => {
   const phoneHash = hashToken(phone);
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
 
@@ -42,9 +43,9 @@ const requestOtp = async (phone: string) => {
   return { success: true };
 };
 
-const verifyOtp = async (phone: string, submittedCode: string) => {
+const verifyOtp = async ({phone,code}:VerifyOtpInput) => {
   const phoneHash = hashToken(phone);
-  const submittedCodeHash = hashToken(submittedCode);
+  const submittedCodeHash = hashToken(code);
   const currentTime = new Date();
 
   await db.transaction(async (tx) => {
