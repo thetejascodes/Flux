@@ -4,12 +4,12 @@ import {
   generateAccessToken,
   generateRefreshToken,
   hashRefreshToken,
-  verifyAccessToken,
 } from "../../common/utils/jwt.utils.js";
 import ApiError from "../../common/utils/api-error.js";
 import type { SignUpInput, LoginInput, RefreshInput } from "./dto/auth.dto.js";
 import { and, eq } from "drizzle-orm";
 import bcrypt from "bcrypt";
+
 const SALT_ROUNDS = 12;
 const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -24,6 +24,7 @@ const issueTokens = async (userId: string, role: string) => {
   });
   return { accessToken, refreshToken };
 };
+
 const signUp = async ({ email, password }: SignUpInput) => {
   const [existing] = await db
     .select()
@@ -85,6 +86,7 @@ const login = async ({ email, password }: LoginInput) => {
   }
   return issueTokens(user.id, user.role ?? "user");
 };
+
 const refresh = async ({ refreshToken }: RefreshInput) => {
   const tokenHash = hashRefreshToken(refreshToken);
   const [session] = await db
