@@ -80,11 +80,30 @@ const login = async ({ email, password }: LoginInput) => {
     .select()
     .from(users)
     .where(eq(users.id, identify.userId));
-    if(!user){
-        throw ApiError.internal("User record missing for existing identity");
-    }
-    return issueTokens(user.id,user.role ?? "user");
+  if (!user) {
+    throw ApiError.internal("User record missing for existing identity");
+  }
+  return issueTokens(user.id, user.role ?? "user");
 };
-const refresh = async ({ refreshToken }: RefreshInput) => {};
+const refresh = async ({ refreshToken }: RefreshInput) => {
+  const tokenHash = hashRefreshToken(refreshToken);
+  const [session] = await db
+    .select()
+    .from(sessions)
+    .where(eq(sessions.refreshTokenHash, tokenHash));
+  if (!session || session.expiresAt < new Date()) {
+    throw ApiError.unauthorized("Invalid or expired refresh token");
+  }
+  await db.delete(sessions).where(eq(sessions.id, session.id));
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, session.userId));
+  if (!user) {
+    throw ApiError.unauthorized("User no longer exists");
+  }
+
+  return issueTokens(user.id, user.role ?? "user");
+};
 
 export { issueTokens, signUp, login, refresh };
