@@ -3,7 +3,8 @@ import { users,sessions,authIdentities } from "../../common/db/schema.js";
 import { generateAccessToken,generateRefreshToken,hashRefreshToken,verifyAccessToken } from "../../common/utils/jwt.utils.js";
 import ApiError from "../../common/utils/api-error.js";
 import type { SignUpInput,LoginInput,RefreshInput } from "./dto/auth.dto.js";
-
+import { and,eq } from "drizzle-orm";
+import bcrypt from "bcrypt"
 const SALT_ROUNDS = 12;
 const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; 
 
@@ -18,7 +19,38 @@ const issueTokens = async(userId:string, role:string)=>{
     })
     return{accessToken,refreshToken};
 }
+const signUp = async({email,password}:SignUpInput)=>{
+    const [existing] = await db.select().from(authIdentities).where(and(eq(authIdentities.provider,"email"),eq(authIdentities.providerUid,email)));
+    if(existing){
+        throw ApiError.conflict("An account with this email already exists");
+    }
+    const passwordHash = await bcrypt.hash(password,SALT_ROUNDS);
+    const user = await db.transaction(async(tx)=>{
+        const [newUser] = await tx.insert(users).values({
+            email
+        }).returning();
+        if(!newUser){
+            throw ApiError.internal("Failed to create user");
+        }
+        await tx.insert(authIdentities).values({
+            userId:newUser.id,
+            provider:"email",
+            providerUid:email,
+            passwordHash,
+        });
+        return newUser;
+    })
+    return {id:user.id,email:user.email}
+}
+
+
+const login = async({email,password}:LoginInput)=>{
+
+}
+const refresh = async({refreshToken}:RefreshInput)=>{
+
+}
 
 
 
-export {issueTokens}
+export {issueTokens,signUp,login,refresh}
