@@ -1,4 +1,5 @@
 import jwt, { type SignOptions } from "jsonwebtoken";
+import crypto from "crypto";
 import config from "../config/index.js";
 import ApiError from "./api-error.js";
 
@@ -22,19 +23,10 @@ export const verifyAccessToken = (token: string) => {
   return payload;
 };
 
-export const generateRefreshToken = (payload: { userId: string }) => {
-  const options: SignOptions = {
-    expiresIn: config.jwt.refreshExpiresIn as NonNullable<
-      SignOptions["expiresIn"]
-    >,
-  };
-  return jwt.sign(payload, config.jwt.refreshSecret, options);
+export const generateRefreshToken = () => {
+  return crypto.randomBytes(32).toString("hex");
 };
 
-export const verifyRefreshToken = (token: string) => {
-  const payload = jwt.verify(token, config.jwt.refreshSecret);
-  if (typeof payload === "string" || !("userId" in payload)) {
-    throw ApiError.internal("unexpected token payload");
-  }
-  return payload;
+export const hashRefreshToken = (token: string) => {
+  return crypto.createHash("sha256").update(token).digest("hex");
 };
