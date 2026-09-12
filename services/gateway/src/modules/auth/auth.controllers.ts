@@ -73,3 +73,5 @@ const refresh = async (  req: Request<{}, {}, RefreshInput>,
     next(error);
   }
 };
+
+export { requestOtp, verifyOtp, signUp, login, refresh };
