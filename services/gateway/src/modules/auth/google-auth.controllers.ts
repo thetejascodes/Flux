@@ -23,3 +23,6 @@ const googleCallback = async (
     next(error);
   }
 };
+
+export {googleRedirect,googleCallback};
+
