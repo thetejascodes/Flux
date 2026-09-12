@@ -7,7 +7,7 @@ import { SignUpDto,LoginDto,RefreshDto } from "./dto/auth.dto.js";
 const router = Router();
 
 router.post("/signup",validate(SignUpDto),authController.signUp);
-
+router.post("/login",validate(LoginDto),authController.login);
 
 
 export default router;
