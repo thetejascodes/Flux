@@ -51,3 +51,14 @@ const exchangeCodeForTokens = async (
   }
   return response.json() as Promise<GoogleTokenResponse>;
 };
+
+const getGoogleUserInfo = async(accessToken: string):Promise<GoogleUserInfo>=>{
+    const response = await fetch("https://www.googleapis.com/oauth2/v3/userinfo",{
+        headers:{Authorization:`Bearer ${accessToken}`},
+    });
+    if(!response.ok){
+        throw ApiError.unauthorized("Failed to fetch Google profile");
+    }
+
+    return response.json() as Promise<GoogleUserInfo>;
+};
