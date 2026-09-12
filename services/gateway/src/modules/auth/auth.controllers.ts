@@ -47,13 +47,28 @@ const signUp = async (
   }
 };
 
-const login = async (req: Request<{}, {}, LoginInput>,
+const login = async (
+  req: Request<{}, {}, LoginInput>,
   res: Response,
-  next: NextFunction,) => {
+  next: NextFunction,
+) => {
   try {
-    const {email,password} = req.body;
-    const result = await authService.login({email,password});
-    return ApiResponse.ok(res,"User Login Successfully",result);
+    const { email, password } = req.body;
+    const result = await authService.login({ email, password });
+    return ApiResponse.ok(res, "User Login Successfully", result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+const refresh = async (  req: Request<{}, {}, RefreshInput>,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const {refreshToken} = req.body;
+    const result = await authService.refresh({refreshToken});
+    return ApiResponse.ok(res,"Refresh Token",result);
   } catch (error) {
     next(error);
   }
