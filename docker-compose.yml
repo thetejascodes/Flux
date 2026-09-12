@@ -51,7 +51,7 @@ services:
     ports:
       - "4000:4000"
     env_file:
-      - ./services/gateway/.env
+      - ./services/gateway/.env.docker
     depends_on:
       postgres:
         condition: service_healthy

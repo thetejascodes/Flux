@@ -6,7 +6,8 @@ services/*/.env
 .env.development
 .env.test
 .env.production
-
+services/*/.env
+services/*/.env.docker
 # Dependencies
 node_modules/
 services/*/node_modules/
