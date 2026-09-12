@@ -21,14 +21,33 @@ interface GoogleUserInfo {
   picture?: string;
 }
 
-
-const getGoogleAuthUrl = ()=>{
-    const params = new URLSearchParams({
-        client_id:config.google.clientId,
-        redirect_uri:config.google.redirectUri,
-        response_type:"code",
-        scope: "openid email profile",
-        access_type:"offline"
-    });
+const getGoogleAuthUrl = () => {
+  const params = new URLSearchParams({
+    client_id: config.google.clientId,
+    redirect_uri: config.google.redirectUri,
+    response_type: "code",
+    scope: "openid email profile",
+    access_type: "offline",
+  });
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-}
+};
+
+const exchangeCodeForTokens = async (
+  code: string,
+): Promise<GoogleTokenResponse> => {
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: config.google.clientId,
+      client_secret: config.google.clientSecret,
+      code,
+      grant_type: "authorization_code",
+      redirect_uri: config.google.redirectUri,
+    }),
+  });
+  if (!response.ok) {
+    throw ApiError.unauthorized("Google authorization failed");
+  }
+  return response.json() as Promise<GoogleTokenResponse>;
+};
