@@ -1,6 +1,6 @@
 import { eq, and } from "drizzle-orm";
 import { db } from "../../common/db/index.js";
-import { authIdentities, users } from "../../common/db/schema.js";
+import { authIdentities, sessions, users } from "../../common/db/schema.js";
 import ApiError from "../../common/utils/api-error.js";
 import config from "../../common/config/index.js";
 import { issueTokens } from "./auth.service.js";
@@ -52,13 +52,70 @@ const exchangeCodeForTokens = async (
   return response.json() as Promise<GoogleTokenResponse>;
 };
 
-const getGoogleUserInfo = async(accessToken: string):Promise<GoogleUserInfo>=>{
-    const response = await fetch("https://www.googleapis.com/oauth2/v3/userinfo",{
-        headers:{Authorization:`Bearer ${accessToken}`},
-    });
-    if(!response.ok){
-        throw ApiError.unauthorized("Failed to fetch Google profile");
-    }
+const getGoogleUserInfo = async (
+  accessToken: string,
+): Promise<GoogleUserInfo> => {
+  const response = await fetch(
+    "https://www.googleapis.com/oauth2/v3/userinfo",
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  if (!response.ok) {
+    throw ApiError.unauthorized("Failed to fetch Google profile");
+  }
 
-    return response.json() as Promise<GoogleUserInfo>;
+  return response.json() as Promise<GoogleUserInfo>;
+};
+
+const loginWithGoogle = async (code: string) => {
+  const googleTokens = await exchangeCodeForTokens(code);
+  const profile = await getGoogleUserInfo(googleTokens.access_token);
+
+  const [identify] = await db
+    .select()
+    .from(authIdentities)
+    .where(
+      and(
+        eq(authIdentities.provider, "google"),
+        eq(authIdentities.providerUid, profile.sub),
+      ),
+    );
+  let userId: string;
+  let role: string;
+  if (identify) {
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, identify.userId));
+    if (!user) {
+      throw ApiError.internal(
+        "User record missing for existing Google identity",
+      );
+    }
+    userId = user.id;
+    role = user.role ?? "user";
+  } else {
+    const created = await db.transaction(async (tx) => {
+      const [newUser] = await tx
+        .insert(users)
+        .values({
+          email: profile.email,
+        })
+        .returning();
+      if (!newUser) {
+        throw ApiError.internal("Failed to create user");
+      }
+
+      await tx.insert(authIdentities).values({
+        userId: newUser.id,
+        provider: "google",
+        providerUid: profile.sub,
+      });
+      return newUser;
+    });
+    userId = created.id;
+    role = created.role ?? "user";
+  }
+  return issueTokens(userId, role);
 };
