@@ -10,5 +10,7 @@ router.post("/signup",validate(SignUpDto),authController.signUp);
 router.post("/login",validate(LoginDto),authController.login);
 router.post("/refresh",validate(RefreshDto),authController.refresh);
 
+router.post("/otp/request",validate(RequestOtpDto),authController.requestOtp);
+
 
 export default router;
