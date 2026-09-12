@@ -39,6 +39,9 @@ const config = {
     clientSecret: optional("GOOGLE_CLIENT_SECRET", ""),
     redirectUri: optional("GOOGLE_REDIRECT_URI", ""),
   },
+  services: {
+    catalogUrl: optional("CATALOG_SERVICE_URL", "http://localhost:4001"),
+  },
 
   otpStubMode: optional("OTP_STUB_MODE", "true") === "true",
 };
