@@ -20,3 +20,5 @@ const isAuthenticated = async (
     next(error);
   }
 };
+
+export default isAuthenticated;
