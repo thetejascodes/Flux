@@ -46,3 +46,15 @@ const signUp = async (
     next(error);
   }
 };
+
+const login = async (req: Request<{}, {}, LoginInput>,
+  res: Response,
+  next: NextFunction,) => {
+  try {
+    const {email,password} = req.body;
+    const result = await authService.login({email,password});
+    return ApiResponse.ok(res,"User Login Successfully",result);
+  } catch (error) {
+    next(error);
+  }
+};
