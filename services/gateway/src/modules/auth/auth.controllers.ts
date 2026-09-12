@@ -75,3 +75,4 @@ const refresh = async (  req: Request<{}, {}, RefreshInput>,
 };
 
 export { requestOtp, verifyOtp, signUp, login, refresh };
+
