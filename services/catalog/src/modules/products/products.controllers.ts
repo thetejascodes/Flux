@@ -45,3 +45,16 @@ const listProducts = async (
     next(error);
   }
 };
+
+const updateProduct = async (
+  req: Request<{ id: string }, {}, UpdateProductInput>,
+  res: Response,
+  next: NextFunction,
+) => {
+    try {
+        const result = await productService.updateProduct(req.params.id,req.body);
+        return ApiResponse.ok(res,"Product updated successfully",result);
+    } catch (error) {
+        next(error);
+    }
+};
