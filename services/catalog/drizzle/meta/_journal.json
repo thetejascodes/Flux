@@ -8,6 +8,13 @@
       "when": 1789299646342,
       "tag": "0000_robust_anthem",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789302402904,
+      "tag": "0001_minor_pretty_boy",
+      "breakpoints": true
     }
   ]
 }
