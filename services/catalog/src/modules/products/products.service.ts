@@ -14,6 +14,7 @@ const createProduct = async (input: CreateProductInput) => {
     .values({
       name: input.name,
       description: input.description,
+      category:input.category,
       price: input.price.toString(),
     })
     .returning();
