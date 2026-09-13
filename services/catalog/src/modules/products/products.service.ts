@@ -24,9 +24,20 @@ const createProduct = async (input: CreateProductInput) => {
 
 const getProductById = async (id: string) => {
   const [product] = await db.select().from(products).where(eq(products.id, id));
-  if(!product){
+  if (!product) {
     throw ApiError.notFound("Product not found");
   }
   return product;
 };
 
+const listProducts = async ({
+  category,
+  page,
+  limit,
+}: ListProductsQueryInput) => {
+  const offset = (page - 1) * limit;
+  const query = db.select().from(products);
+  return category
+    ? query.where(eq(products.category, category)).limit(limit).offset(offset)
+    : query.limit(limit).offset(offset);
+};
