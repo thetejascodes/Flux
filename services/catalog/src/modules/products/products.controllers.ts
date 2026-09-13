@@ -58,3 +58,5 @@ const updateProduct = async (
         next(error);
     }
 };
+
+export { createProduct,getProductById,listProducts,updateProduct };
