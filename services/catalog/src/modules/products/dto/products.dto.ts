@@ -18,7 +18,19 @@ class ListProductsQueryDto extends BaseDto {
   });
 }
 
+class UpdateProductDto extends BaseDto {
+  static schema = z.object({
+    name: z.string().min(1).optional(),
+    description: z.string().max(1000).optional(),
+    price: z.number().positive().optional(),
+    category: z.string().optional(),
+  });
+}
+
+
 export type CreateProductInput = z.infer<typeof CreateProductDto.schema>;
 export type ListProductsQueryInput = z.infer<typeof ListProductsQueryDto.schema>;
+export type UpdateProductInput = z.infer<typeof UpdateProductDto.schema>;
 
-export { CreateProductDto, ListProductsQueryDto };
+
+export { CreateProductDto, ListProductsQueryDto,UpdateProductDto };
