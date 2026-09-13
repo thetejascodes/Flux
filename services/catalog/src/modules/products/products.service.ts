@@ -1,0 +1,24 @@
+import { db } from "../../common/db/index.js";
+import { products } from "../../common/db/schema.js";
+import { eq, and } from "drizzle-orm";
+import ApiError from "../../common/utils/api-error.js";
+import type {
+  CreateProductInput,
+  ListProductsQueryInput,
+} from "./dto/products.dto.js";
+
+const createProduct = async (input: CreateProductInput) => {
+  const [product] = await db
+    .insert(products)
+    .values({
+      name: input.name,
+      description: input.description,
+      price: input.price.toString(),
+    })
+    .returning();
+  if (!product) {
+    throw ApiError.internal("Failed to create product");
+  }
+  return product;
+};
+
