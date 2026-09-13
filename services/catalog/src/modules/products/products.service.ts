@@ -22,3 +22,11 @@ const createProduct = async (input: CreateProductInput) => {
   return product;
 };
 
+const getProductById = async (id: string) => {
+  const [product] = await db.select().from(products).where(eq(products.id, id));
+  if(!product){
+    throw ApiError.notFound("Product not found");
+  }
+  return product;
+};
+
