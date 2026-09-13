@@ -21,12 +21,12 @@ const createProduct = async (
 };
 
 const getProductById = async (
-  req: Request,
+  req: Request<{ id: string }>,
   res: Response,
   next: NextFunction,
 ) => {
   try {
-    const result = await productService.getProductById(req.params.id as string);
+    const result = await productService.getProductById(req.params.id);
     return ApiResponse.ok(res, "Product fetched successfully", result);
   } catch (error) {
     next(error);
