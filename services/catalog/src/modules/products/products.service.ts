@@ -58,3 +58,5 @@ const updateProduct = async (id: string, input: UpdateProductInput) => {
     }
     return product;
 };
+
+export { createProduct,getProductById,listProducts,updateProduct };
