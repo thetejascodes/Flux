@@ -5,6 +5,7 @@ import ApiError from "../../common/utils/api-error.js";
 import type {
   CreateProductInput,
   ListProductsQueryInput,
+  UpdateProductInput,
 } from "./dto/products.dto.js";
 
 const createProduct = async (input: CreateProductInput) => {
@@ -40,4 +41,20 @@ const listProducts = async ({
   return category
     ? query.where(eq(products.category, category)).limit(limit).offset(offset)
     : query.limit(limit).offset(offset);
+};
+
+const updateProduct = async (id: string, input: UpdateProductInput) => {
+  const [product] = await db
+    .update(products)
+    .set({
+      ...input,
+      price:input.price !== undefined ? input.price.toString() : undefined,
+      updatedAt: new Date(),
+    })
+    .where(eq(products.id, id))
+    .returning();
+    if(!product){
+        throw ApiError.notFound("Product not found");
+    }
+    return product;
 };
