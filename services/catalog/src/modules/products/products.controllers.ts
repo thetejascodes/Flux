@@ -19,3 +19,12 @@ const createProduct = async (
         next(error);
     }
 };
+
+const getProductById = async(req:Request,res:Response,next:NextFunction)=>{
+    try {
+        const result = await productService.getProductById(req.params.id as string);
+        return ApiResponse.ok(res,"Product fetched successfully",result);
+    } catch (error) {
+        next(error);
+    }
+}
