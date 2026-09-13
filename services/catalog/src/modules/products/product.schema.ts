@@ -9,7 +9,10 @@ export const products = pgTable(
     price: numeric("price", { precision: 10, scale: 2 }).notNull(),
     category: varchar("category", { length: 100 }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
   },
   (table) => ({
     categoryIdx: index("products_category_idx").on(table.category),
