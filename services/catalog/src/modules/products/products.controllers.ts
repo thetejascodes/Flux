@@ -34,12 +34,13 @@ const getProductById = async (
 };
 
 const listProducts = async (
-  req: Request<{}, {}, {}, ListProductsQueryInput>,
+  req: Request,
   res: Response,
   next: NextFunction,
 ) => {
   try {
-    const result = await productService.listProducts(req.query);
+    const query = req.query as unknown as ListProductsQueryInput;
+    const result = await productService.listProducts(query);
     return ApiResponse.ok(res, "Products fetched successfully", result);
   } catch (error) {
     next(error);
@@ -51,12 +52,12 @@ const updateProduct = async (
   res: Response,
   next: NextFunction,
 ) => {
-    try {
-        const result = await productService.updateProduct(req.params.id,req.body);
-        return ApiResponse.ok(res,"Product updated successfully",result);
-    } catch (error) {
-        next(error);
-    }
+  try {
+    const result = await productService.updateProduct(req.params.id, req.body);
+    return ApiResponse.ok(res, "Product updated successfully", result);
+  } catch (error) {
+    next(error);
+  }
 };
 
-export { createProduct,getProductById,listProducts,updateProduct };
+export { createProduct, getProductById, listProducts, updateProduct };
