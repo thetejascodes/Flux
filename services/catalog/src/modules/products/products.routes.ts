@@ -17,6 +17,7 @@ router.get(
 
 router.get("/:id", productController.getProductById);
 router.post("/", validate(CreateProductDto), productController.createProduct);
+router.patch("/:id", validate(UpdateProductDto), productController.updateProduct);
 
 export default router;
 
