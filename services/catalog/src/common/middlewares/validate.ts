@@ -18,7 +18,7 @@ const validateQuery = (DtoClass: DtoClass) => {
   return (req: Request, res: Response, next: NextFunction) => {
     const { errors, value } = DtoClass.validate(req.query);
     if (errors) throw ApiError.badRequest(errors.join("; "));
-    req.query = value as any;
+    Object.assign(req.query, value);
     next();
   };
 };
