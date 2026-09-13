@@ -1,8 +1,5 @@
 # ADR-0002: Authentication Strategy
 
-**Status:** Accepted
-**Date:** 2026-09-13
-
 ## Context
 
 Flux's Gateway needs to authenticate users through three distinct methods — email/password, phone-based OTP, and Google OAuth — while every other service in the system needs a single, consistent way to trust that a request is authenticated, regardless of which method the user originally logged in with.
