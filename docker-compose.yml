@@ -62,16 +62,16 @@ services:
   # package.json, and a .env file — trying to build/start a service before
   # it exists is what caused the earlier "env file not found" errors.
 
-  # catalog:
-  #   build: ./services/catalog
-  #   restart: unless-stopped
-  #   ports:
-  #     - "4001:4001"
-  #   env_file:
-  #     - ./services/catalog/.env
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
+  catalog:
+    build: ./services/catalog
+    restart: unless-stopped
+    ports:
+      - "4001:4001"
+    env_file:
+      - ./services/catalog/.env.docker
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   # inventory:
   #   build: ./services/inventory
