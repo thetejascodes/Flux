@@ -1,6 +1,6 @@
 import { db } from "../../common/db/index.js";
 import { products } from "../../common/db/schema.js";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import ApiError from "../../common/utils/api-error.js";
 import type {
   CreateProductInput,
@@ -50,7 +50,6 @@ const updateProduct = async (id: string, input: UpdateProductInput) => {
     .set({
       ...input,
       price:input.price !== undefined ? input.price.toString() : undefined,
-      updatedAt: new Date(),
     })
     .where(eq(products.id, id))
     .returning();
