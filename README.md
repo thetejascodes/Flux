@@ -8,7 +8,7 @@ Most portfolio e-commerce projects are a product table, a cart, and a checkout f
 
 ## Status
 
-🚧 **In active development.** Gateway (full authentication) is complete and tested end-to-end. Catalog (product CRUD) is nearing completion. Inventory, Order, Payment, Delivery, and Notification are not yet started.
+🚧 **In active development.** Gateway (full authentication) is complete and tested end-to-end. Catalog (product CRUD) is complete and tested end-to-end — including the full Gateway → Catalog authenticated proxy path. Inventory, Order, Payment, Delivery, and Notification are not yet started.
 
 ---
 
@@ -81,7 +81,7 @@ flux/
 │   └── adr/
 ├── services/
 │   ├── gateway/        # auth (3 methods), routing        ✅ complete
-│   ├── catalog/        # products, search                 🚧 nearly complete
+│   ├── catalog/        # products, search                 ✅ complete
 │   ├── inventory/      # stock, reservations               ⬜ not started
 │   ├── order/          # saga orchestrator                 ⬜ not started
 │   ├── payment/        # charges, webhooks                 ⬜ not started
@@ -112,7 +112,7 @@ services/<name>/
 | Service | Status | Responsibility |
 | --- | --- | --- |
 | **Gateway** | ✅ Complete | Auth (email/password, OTP, Google), request routing, token validation |
-| **Catalog** | 🚧 Nearly complete | Products: create, get, list (filtered/paginated), update |
+| **Catalog** | ✅ Complete | Products: create, get, list (filtered/paginated), update |
 | **Inventory** | ⬜ Not started | Per-location stock, concurrency-safe reservations with timeout |
 | **Order** | ⬜ Not started | Order lifecycle, saga orchestration across services |
 | **Payment** | ⬜ Not started | Payment processing, idempotency keys, webhook reconciliation |
@@ -196,7 +196,7 @@ The three problems Flux is actually built to solve well — everything else exis
 ### Phase 0 — Foundation
 - [x] Repo structure, Docker Compose infra (Postgres, Valkey, RabbitMQ)
 - [x] Gateway with full 3-method authentication
-- [ ] Catalog service (nearly complete)
+- [x] Catalog service — CRUD complete, tested end-to-end through Gateway's authenticated proxy
 
 ### Phase 1 — Inventory & Concurrency
 - [ ] Per-location stock model, reservation with timeout
