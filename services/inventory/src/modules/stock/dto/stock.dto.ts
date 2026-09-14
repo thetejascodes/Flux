@@ -19,3 +19,5 @@ class ReservationIdParamsDto extends BaseDto {
 
 export type ReserveStockInput = z.infer<typeof ReserveStockDto.schema>;
 export type ReservationIdParams = z.infer<typeof ReservationIdParamsDto.schema>;
+
+export { ReserveStockDto, ReservationIdParamsDto };
