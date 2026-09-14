@@ -10,7 +10,7 @@ function required(key: string) {
 const config = {
   port: Number(optional("PORT", "4002")),
   database: { url: required("DATABASE_URL") },
-  valkeyUrl: required("VALKEY_URL"),
+  redisUrl: required("REDIS_URL"),
 };
 
 export default config;
