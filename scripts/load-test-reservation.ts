@@ -1,0 +1,51 @@
+const INVENTORY_URL = "http://localhost:4002";
+const CONCURRENT_REQUESTS = 100;
+
+const PRODUCT_ID = "REPLACE_WITH_REAL_UUID";
+const WAREHOUSE_ID = "REPLACE_WITH_REAL_UUID";
+
+async function attemptReservation(index: number) {
+  const orderId = crypto.randomUUID();
+
+  const response = await fetch(`${INVENTORY_URL}/stock/reserve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      productId: PRODUCT_ID,
+      warehouseId: WAREHOUSE_ID,
+      quantity: 1,
+      orderId,
+    }),
+  });
+
+  return { index, status: response.status, ok: response.ok };
+}
+
+async function runLoadTest() {
+  console.log(
+    `Firing ${CONCURRENT_REQUESTS} concurrent reservation attempts...`,
+  );
+
+  const results = await Promise.all(
+    Array.from({ length: CONCURRENT_REQUESTS }, (_, i) =>
+      attemptReservation(i),
+    ),
+  );
+
+  const succeeded = results.filter((r) => r.ok);
+  const failed = results.filter((r) => !r.ok);
+
+  console.log(`\nResults:`);
+  console.log(`  Succeeded (201): ${succeeded.length}`);
+  console.log(`  Failed (409 - insufficient stock): ${failed.length}`);
+
+  if (succeeded.length === 1) {
+    console.log(`\n✅ PASS — exactly 1 reservation succeeded. No overselling.`);
+  } else {
+    console.log(
+      `\n❌ FAIL — expected exactly 1 success, got ${succeeded.length}.`,
+    );
+  }
+}
+
+runLoadTest();
