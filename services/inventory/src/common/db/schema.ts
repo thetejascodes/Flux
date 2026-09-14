@@ -1,0 +1,1 @@
+export * from "../../modules/stock/stock.schema.js";
