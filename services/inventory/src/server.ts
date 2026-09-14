@@ -2,7 +2,15 @@ import "dotenv/config";
 import app from "./app.js";
 import config from "./common/config/index.js";
 
+const port = config.port;
 
-app.listen(config.port, () => {
-  console.log(`🚀 Inventory service running on port ${config.port}`);
+const startServer = async () => {
+  app.listen(port, () => {
+    console.log(`🚀 Inventory service running on port ${port}`);
+  });
+};
+
+startServer().catch((err) => {
+  console.error("Failed to start server", err);
+  process.exit(1);
 });
