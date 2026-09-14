@@ -9,4 +9,13 @@ class ReserveStockDto extends BaseDto {
     orderId: z.string().uuid(),
   });
 }
+
+class ReservationIdParamsDto extends BaseDto {
+  static schema = z.object({
+    id: z.string().uuid(),
+  });
+}
+
+
 export type ReserveStockInput = z.infer<typeof ReserveStockDto.schema>;
+export type ReservationIdParams = z.infer<typeof ReservationIdParamsDto.schema>;
