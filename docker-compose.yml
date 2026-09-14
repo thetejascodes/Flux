@@ -73,20 +73,20 @@ services:
       postgres:
         condition: service_healthy
 
-  # inventory:
-  #   build: ./services/inventory
-  #   restart: unless-stopped
-  #   ports:
-  #     - "4002:4002"
-  #   env_file:
-  #     - ./services/inventory/.env
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     valkey:
-  #       condition: service_healthy
-  #     rabbitmq:
-  #       condition: service_healthy
+  inventory:
+    build: ./services/inventory
+    restart: unless-stopped
+    ports:
+      - "4002:4002"
+    env_file:
+      - ./services/inventory/.env.docker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
 
   # order:
   #   build: ./services/order
