@@ -73,4 +73,5 @@ const releaseReservation = async (reservationId: string) => {
       .set({ status: "RELEASED" })
       .where(eq(reservations.id, reservationId));
   });
+  await redis.del(`reservation:${reservationId}`)
 };
