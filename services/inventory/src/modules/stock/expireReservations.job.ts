@@ -39,3 +39,5 @@ const startExpiryJob = () => {
   }, EXPIRY_CHECK_INTERVAL_MS);
   console.log("[expiry-job] started, checking every 60s");
 };
+
+export { startExpiryJob,expirePendingReservations };
