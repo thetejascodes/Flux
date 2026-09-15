@@ -4,8 +4,7 @@ import { eq, and, sql, gte } from "drizzle-orm";
 import ApiError from "../../common/utils/api-error.js";
 import { redis } from "../../common/redis/client.js";
 import type {
-  ReserveStockInput,
-  ReservationIdParams,
+  ReserveStockInput
 } from "./dto/stock.dto.js";
 
 const RESERVATION_TTL_MS = 10 * 60 * 1000; // 10 minutes
