@@ -1,5 +1,6 @@
 # ADR-0001: Database-per-Service vs Shared Database
 
+Status: Accepted / Complete
 
 ## Context
 
