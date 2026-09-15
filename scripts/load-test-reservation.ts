@@ -1,8 +1,8 @@
 const INVENTORY_URL = "http://localhost:4002";
 const CONCURRENT_REQUESTS = 100;
 
-const PRODUCT_ID = "REPLACE_WITH_REAL_UUID";
-const WAREHOUSE_ID = "REPLACE_WITH_REAL_UUID";
+const PRODUCT_ID = "03208b3e-8eaa-4163-8fa8-914e99f204e2";
+const WAREHOUSE_ID = "6193882b-fab5-4cde-9c0d-dd87b335c56e";
 
 async function attemptReservation(index: number) {
   const orderId = crypto.randomUUID();
