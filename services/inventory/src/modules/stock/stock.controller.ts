@@ -44,3 +44,5 @@ const confirmReservation = async (
     next(error);
   }
 };
+
+export { reserveStock, releaseReservation, confirmReservation };
