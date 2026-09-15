@@ -7,7 +7,7 @@ const WAREHOUSE_ID = "REPLACE_WITH_REAL_UUID";
 async function attemptReservation(index: number) {
   const orderId = crypto.randomUUID();
 
-  const response = await fetch(`${INVENTORY_URL}/stock/reserve`, {
+  const response = await fetch(`${INVENTORY_URL}/reservations`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -32,18 +32,24 @@ async function runLoadTest() {
     ),
   );
 
-  const succeeded = results.filter((r) => r.ok);
-  const failed = results.filter((r) => !r.ok);
+  const succeeded = results.filter((r) => r.status === 201);
+  const conflicted = results.filter((r) => r.status === 409);
+  const other = results.filter(
+    (r) => r.status !== 201 && r.status !== 409,
+  );
 
   console.log(`\nResults:`);
   console.log(`  Succeeded (201): ${succeeded.length}`);
-  console.log(`  Failed (409 - insufficient stock): ${failed.length}`);
+  console.log(`  Conflicted (409 - insufficient stock): ${conflicted.length}`);
+  if (other.length > 0) {
+    console.log(`  ⚠️  Unexpected statuses: ${other.length}`, other);
+  }
 
-  if (succeeded.length === 1) {
-    console.log(`\n✅ PASS — exactly 1 reservation succeeded. No overselling.`);
+  if (succeeded.length === 1 && conflicted.length === CONCURRENT_REQUESTS - 1) {
+    console.log(`\n✅ PASS — exactly 1 reservation succeeded, the other 99 were cleanly rejected. No overselling.`);
   } else {
     console.log(
-      `\n❌ FAIL — expected exactly 1 success, got ${succeeded.length}.`,
+      `\n❌ FAIL — expected 1 success + ${CONCURRENT_REQUESTS - 1} clean 409s, got ${succeeded.length} success + ${conflicted.length} conflicted (+ ${other.length} unexpected).`,
     );
   }
 }
