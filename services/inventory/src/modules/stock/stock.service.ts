@@ -12,39 +12,41 @@ const RESERVATION_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 const reserveStock = async (input: ReserveStockInput) => {
   const { productId, warehouseId, quantity, orderId } = input;
-  const updated = await db
-    .update(stock)
-    .set({
-      quantityAvailable: sql`${stock.quantityAvailable} - ${quantity}`,
-      quantityReserved: sql`${stock.quantityReserved} + ${quantity}`,
-    })
-    .where(
-      and(
-        eq(stock.productId, productId),
-        eq(stock.warehouseId, warehouseId),
-        gte(stock.quantityAvailable, quantity),
-      ),
-    )
-    .returning();
-  if (updated.length === 0) {
-    throw ApiError.conflict("Insufficient stock");
-  }
-  const [reservation] = await db
-    .insert(reservations)
-    .values({
-      productId,
-      warehouseId,
-      quantity,
-      orderId,
-      expiresAt: new Date(Date.now() + RESERVATION_TTL_MS),
-      status: "PENDING",
-    })
-    .returning();
-  if (!reservation) {
-    throw ApiError.internal("Failed to create reservation");
-  }
-  await redis.setex(`reservation:${reservation.id}`, 600, "active");
-  return reservation;
+  return db.transaction(async (tx) => {
+    const updated = await tx
+      .update(stock)
+      .set({
+        quantityAvailable: sql`${stock.quantityAvailable} - ${quantity}`,
+        quantityReserved: sql`${stock.quantityReserved} + ${quantity}`,
+      })
+      .where(
+        and(
+          eq(stock.productId, productId),
+          eq(stock.warehouseId, warehouseId),
+          gte(stock.quantityAvailable, quantity),
+        ),
+      )
+      .returning();
+    if (updated.length === 0) {
+      throw ApiError.conflict("Insufficient stock");
+    }
+    const [reservation] = await tx
+      .insert(reservations)
+      .values({
+        productId,
+        warehouseId,
+        quantity,
+        orderId,
+        expiresAt: new Date(Date.now() + RESERVATION_TTL_MS),
+        status: "PENDING",
+      })
+      .returning();
+    if (!reservation) {
+      throw ApiError.internal("Failed to create reservation");
+    }
+    await redis.setex(`reservation:${reservation.id}`, 600, "active");
+    return reservation;
+  });
 };
 
 const releaseReservation = async (reservationId: string) => {
