@@ -30,3 +30,12 @@ const expirePendingReservations = async () => {
     );
   }
 };
+
+const startExpiryJob = () => {
+  setInterval(() => {
+    expirePendingReservations().catch((err) =>
+      console.error("[expiry-job] unexpected error:", err),
+    );
+  }, EXPIRY_CHECK_INTERVAL_MS);
+  console.log("[expiry-job] started, checking every 60s");
+};
