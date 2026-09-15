@@ -18,3 +18,16 @@ const reserveStock = async (
     next(error);
   }
 };
+
+const releaseReservation = async (
+  req: Request<ReservationIdParams>,
+  res: Response,
+  next: NextFunction,
+) => {
+    try {
+        await stockService.releaseReservation(req.params.id);
+        return ApiResponse.ok(res,"Reservation released successfully",null);
+    } catch (error) {
+        next(error);
+    }
+};
