@@ -1,11 +1,18 @@
 import {
   pgTable,
+  pgEnum,
   uuid,
-  varchar,
   integer,
   timestamp,
   index,
 } from "drizzle-orm/pg-core";
+
+export const reservationStatusEnum = pgEnum("reservation_status", [
+  "PENDING",
+  "CONFIRMED",
+  "RELEASED",
+  "EXPIRED",
+]);
 
 export const stock = pgTable(
   "stock",
@@ -36,7 +43,7 @@ export const reservations = pgTable(
     warehouseId: uuid("warehouse_id").notNull(),
     orderId: uuid("order_id").notNull(),
     quantity: integer("quantity").notNull(),
-    status: varchar("status", { length: 20 }).notNull().default("PENDING"), // PENDING | CONFIRMED | RELEASED | EXPIRED
+    status: reservationStatusEnum("status").notNull().default("PENDING"),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
