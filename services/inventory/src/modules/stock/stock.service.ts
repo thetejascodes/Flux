@@ -132,4 +132,4 @@ const findExpiredPendingReservations = async () => {
     );
 };
 
-export { reserveStock, releaseReservation, confirmReservation };
+export { reserveStock, releaseReservation, confirmReservation,findExpiredPendingReservations };
