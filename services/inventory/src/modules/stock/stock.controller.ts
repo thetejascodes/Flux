@@ -24,10 +24,23 @@ const releaseReservation = async (
   res: Response,
   next: NextFunction,
 ) => {
-    try {
-        await stockService.releaseReservation(req.params.id);
-        return ApiResponse.ok(res,"Reservation released successfully",null);
-    } catch (error) {
-        next(error);
-    }
+  try {
+    await stockService.releaseReservation(req.params.id);
+    return ApiResponse.ok(res, "Reservation released successfully", null);
+  } catch (error) {
+    next(error);
+  }
+};
+
+const confirmReservation = async (
+  req: Request<ReservationIdParams>,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    await stockService.confirmReservation(req.params.id);
+    return ApiResponse.ok(res, "Reservation confirmed successfully", null);
+  } catch (error) {
+    next(error);
+  }
 };
