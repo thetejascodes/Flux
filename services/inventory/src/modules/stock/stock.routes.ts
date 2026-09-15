@@ -11,4 +11,6 @@ router.post(
   stockController.reserveStock,
 );
 
+router.patch("/reservations/:id/release", stockController.releaseReservation);
+
 export default router;
