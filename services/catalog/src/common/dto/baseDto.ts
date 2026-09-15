@@ -6,7 +6,10 @@ class BaseDto {
   static validate(data: unknown) {
     const result = this.schema.safeParse(data);
     if (!result.success) {
-      const errors = result.error.issues.map((issue) => issue.message);
+            const errors = result.error.issues.map(
+        (issue) => `${issue.path.join(".")}: ${issue.message}`,
+      );
+
       return { errors, value: null };
     }
     return { value: result.data, errors: null };
