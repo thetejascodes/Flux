@@ -121,3 +121,5 @@ const confirmReservation = async (reservationId: string) => {
 
   await redis.del(`reservation:${reservationId}`);
 };
+
+export { reserveStock,releaseReservation,confirmReservation };
