@@ -1,18 +1,21 @@
-import { z } from 'zod'
+import { z } from "zod";
 
 class BaseDto {
-    static schema = z.object({})
+  static schema = z.object({});
 
-    static validate(data: unknown) {
-        const result = this.schema.safeParse(data)
+  static validate(data: unknown) {
+    const result = this.schema.safeParse(data);
 
-        if (!result.success) {
-            const errors = result.error.issues.map((issue) => issue.message)
-            return { errors, value: null }
-        }
+    if (!result.success) {
+      const errors = result.error.issues.map(
+        (issue) => `${issue.path.join(".")}: ${issue.message}`,
+      );
 
-        return { value: result.data, errors: null }
+      return { errors, value: null };
     }
+
+    return { value: result.data, errors: null };
+  }
 }
 
-export default BaseDto
+export default BaseDto;
