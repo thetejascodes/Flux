@@ -94,7 +94,7 @@ services:
     ports:
       - "4003:4003"
     env_file:
-      - ./services/order/.env
+      - ./services/order/.env.docker
     depends_on:
       postgres:
         condition: service_healthy
