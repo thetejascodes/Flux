@@ -8,9 +8,15 @@ class PlaceOrderDto extends BaseDto {
     quantity: z.number().int().positive(),
   });
 }
+class OrderIdParamsDto extends BaseDto {
+  static schema = z.object({
+    id: z.string().uuid(),
+  });
+}
 
 export type PlaceOrderInput = z.infer<typeof PlaceOrderDto.schema> & {
   userId: string;
 };
+export type OrderIdParams = z.infer<typeof OrderIdParamsDto.schema>;
 
-export { PlaceOrderDto };
+export { PlaceOrderDto, OrderIdParamsDto };
