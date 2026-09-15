@@ -50,14 +50,26 @@ const reserveStock = async (input: ReserveStockInput) => {
 };
 
 const releaseReservation = async (reservationId: string) => {
-  const [reservation] = await db
-    .select()
-    .from(reservations)
-    .where(eq(reservations.id, reservationId));
-  if (!reservation) {
-    throw ApiError.notFound("Reservation not found");
-  }
   await db.transaction(async (tx) => {
+    const updated = await tx
+      .update(reservations)
+      .set({ status: "RELEASED" })
+      .where(
+        and(
+          eq(reservations.id, reservationId),
+          eq(reservations.status, "PENDING"),
+        ),
+      )
+      .returning();
+
+    if (updated.length === 0) {
+      throw ApiError.conflict("Reservation not found or already resolved");
+    }
+
+    const [reservation] = updated;
+    if (!reservation) {
+      throw ApiError.internal("Unexpected error resolving reservation");
+    }
     await tx
       .update(stock)
       .set({
@@ -70,23 +82,31 @@ const releaseReservation = async (reservationId: string) => {
           eq(stock.warehouseId, reservation.warehouseId),
         ),
       );
-    await tx
-      .update(reservations)
-      .set({ status: "RELEASED" })
-      .where(eq(reservations.id, reservationId));
   });
+
   await redis.del(`reservation:${reservationId}`);
 };
-
 const confirmReservation = async (reservationId: string) => {
-  const [reservation] = await db
-    .select()
-    .from(reservations)
-    .where(eq(reservations.id, reservationId));
-  if (!reservation) {
-    throw ApiError.notFound("Reservation not found");
-  }
   await db.transaction(async (tx) => {
+    const updated = await tx
+      .update(reservations)
+      .set({ status: "CONFIRMED" })
+      .where(
+        and(
+          eq(reservations.id, reservationId),
+          eq(reservations.status, "PENDING"),
+        ),
+      )
+      .returning();
+
+    if (updated.length === 0) {
+      throw ApiError.conflict("Reservation not found or already resolved");
+    }
+
+    const [reservation] = updated;
+    if (!reservation) {
+      throw ApiError.internal("Unexpected error resolving reservation");
+    }
     await tx
       .update(stock)
       .set({
@@ -98,9 +118,7 @@ const confirmReservation = async (reservationId: string) => {
           eq(stock.warehouseId, reservation.warehouseId),
         ),
       );
-    await tx
-      .update(reservations)
-      .set({ status: "CONFIRMED" })
-      .where(eq(reservations.id, reservationId));
   });
+
+  await redis.del(`reservation:${reservationId}`);
 };
