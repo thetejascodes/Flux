@@ -10,6 +10,7 @@ function required(key: string) {
 const config = {
   port: Number(optional("PORT", "4003")),
   database: { url: required("DATABASE_URL") },
+  rabbitmq: { url: required("RABBITMQ_URL") },
 };
 
 export default config;
