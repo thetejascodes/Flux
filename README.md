@@ -8,7 +8,7 @@ Most portfolio e-commerce projects are a product table, a cart, and a checkout f
 
 ## Status
 
-🚧 **In active development.** Gateway (full authentication) and Catalog (product CRUD) are complete and tested end-to-end, including the full Gateway → service authenticated proxy path. Inventory's core reservation logic is built and load-tested — 100 concurrent requests against 1 unit of stock correctly yield exactly 1 success and zero overselling — with the background expiry job, Docker packaging, and ADR-0003 still open. Order, Payment, Delivery, and Notification are not yet started.
+🚧 **In active development.** Gateway (full authentication) and Catalog (product CRUD) are complete and tested end-to-end, including the full Gateway → service authenticated proxy path. Inventory's core reservation logic is built and load-tested — 100 concurrent requests against 1 unit of stock correctly yield exactly 1 success and zero overselling — with the background expiry job and Docker packaging still open, while ADR-0003 is now complete and accepted. Order, Payment, Delivery, and Notification are not yet started.
 
 ---
 
@@ -203,7 +203,7 @@ The three problems Flux is actually built to solve well — everything else exis
 - [x] Load test proving zero overselling — 100 concurrent requests, 1 unit of stock, exactly 1 success
 - [ ] Background job to auto-release expired reservations
 - [ ] Dockerize and verify through Gateway's proxy in Docker
-- [ ] ADR-0003: concurrency approach and trade-offs
+- [x] ADR-0003: concurrency approach and trade-offs (completed and accepted)
 
 ### Phase 2 — Order Saga
 - [ ] Order Service as saga orchestrator
