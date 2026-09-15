@@ -8,7 +8,7 @@ Most portfolio e-commerce projects are a product table, a cart, and a checkout f
 
 ## Status
 
-🚧 **In active development.** Gateway (full authentication) is complete and tested end-to-end. Catalog (product CRUD) is complete and tested end-to-end — including the full Gateway → Catalog authenticated proxy path. Inventory, Order, Payment, Delivery, and Notification are not yet started.
+🚧 **In active development.** Gateway (full authentication) and Catalog (product CRUD) are complete and tested end-to-end, including the full Gateway → service authenticated proxy path. Inventory's core reservation logic is built and load-tested — 100 concurrent requests against 1 unit of stock correctly yield exactly 1 success and zero overselling — with the background expiry job, Docker packaging, and ADR-0003 still open. Order, Payment, Delivery, and Notification are not yet started.
 
 ---
 
@@ -82,7 +82,7 @@ flux/
 ├── services/
 │   ├── gateway/        # auth (3 methods), routing        ✅ complete
 │   ├── catalog/        # products, search                 ✅ complete
-│   ├── inventory/      # stock, reservations               ⬜ not started
+│   ├── inventory/      # stock, reservations               🚧 core logic done, load-tested
 │   ├── order/          # saga orchestrator                 ⬜ not started
 │   ├── payment/        # charges, webhooks                 ⬜ not started
 │   ├── delivery/       # routing, ETA, tracking             ⬜ not started
@@ -113,7 +113,7 @@ services/<name>/
 | --- | --- | --- |
 | **Gateway** | ✅ Complete | Auth (email/password, OTP, Google), request routing, token validation |
 | **Catalog** | ✅ Complete | Products: create, get, list (filtered/paginated), update |
-| **Inventory** | ⬜ Not started | Per-location stock, concurrency-safe reservations with timeout |
+| **Inventory** | 🚧 Core logic done, load-tested | Per-location stock, concurrency-safe reservations with timeout |
 | **Order** | ⬜ Not started | Order lifecycle, saga orchestration across services |
 | **Payment** | ⬜ Not started | Payment processing, idempotency keys, webhook reconciliation |
 | **Delivery** | ⬜ Not started | Nearest dark-store/driver assignment, ETA, live tracking |
@@ -185,7 +185,7 @@ Each service has two env files: `.env` (uses `localhost`, for local tooling) and
 
 The three problems Flux is actually built to solve well — everything else exists to support them.
 
-1. **Zero overselling under concurrency** — two buyers hitting "buy" on the last unit at the same instant must never both succeed. Solved with reservation-with-timeout plus concurrency-safe stock decrements, proven under load test. *(Inventory — not yet built.)*
+1. **Zero overselling under concurrency** — two buyers hitting "buy" on the last unit at the same instant must never both succeed. Solved with an atomic conditional `UPDATE` (no explicit row lock needed — Postgres's own statement-level atomicity does the work), reservation-with-timeout, and proven under a real load test: 100 concurrent requests against 1 unit of stock, exactly 1 success. *(Inventory — reservation logic complete and load-tested; expiry job still pending.)*
 2. **The order saga** — order placed → inventory reserved → payment charged → delivery assigned. If any step fails, prior steps are compensated instead of leaving a broken order behind. *(Order/Payment — not yet built.)*
 3. **Nearest-stock, nearest-driver routing** — orders assigned to the closest dark store with available stock and the closest available delivery partner, with a real ETA calculation. *(Delivery — not yet built.)*
 
@@ -199,8 +199,10 @@ The three problems Flux is actually built to solve well — everything else exis
 - [x] Catalog service — CRUD complete, tested end-to-end through Gateway's authenticated proxy
 
 ### Phase 1 — Inventory & Concurrency
-- [ ] Per-location stock model, reservation with timeout
-- [ ] Load test proving zero overselling
+- [x] Per-location stock model, atomic reservation with timeout
+- [x] Load test proving zero overselling — 100 concurrent requests, 1 unit of stock, exactly 1 success
+- [ ] Background job to auto-release expired reservations
+- [ ] Dockerize and verify through Gateway's proxy in Docker
 - [ ] ADR-0003: concurrency approach and trade-offs
 
 ### Phase 2 — Order Saga
