@@ -38,3 +38,14 @@ const getChannel = (): Channel => {
 
   return chanel;
 };
+
+const closeRabbitMQ = async (): Promise<void> => {
+  if (chanel) {
+    await chanel.close();
+    chanel = null;
+  }
+  if (connection) {
+    await connection.close();
+    connection = null;
+  }
+};
