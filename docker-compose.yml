@@ -88,18 +88,18 @@ services:
       rabbitmq:
         condition: service_healthy
 
-  # order:
-  #   build: ./services/order
-  #   restart: unless-stopped
-  #   ports:
-  #     - "4003:4003"
-  #   env_file:
-  #     - ./services/order/.env
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     rabbitmq:
-  #       condition: service_healthy
+  order:
+    build: ./services/order
+    restart: unless-stopped
+    ports:
+      - "4003:4003"
+    env_file:
+      - ./services/order/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
 
   # payment:
   #   build: ./services/payment
