@@ -13,4 +13,6 @@ router.post(
 
 router.patch("/reservations/:id/release", stockController.releaseReservation);
 
+router.patch("/reservations/:id/confirm", stockController.confirmReservation);
+
 export default router;
