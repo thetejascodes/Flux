@@ -1,5 +1,7 @@
 # ADR-0003: Concurrency Control for Stock Reservations
 
+Status: Accepted / Complete
+
 ## Context
 
 The Inventory service must guarantee that stock is never oversold when multiple
