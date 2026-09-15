@@ -2,12 +2,13 @@
 .env
 .env.local
 .env.*.local
-services/*/.env
 .env.development
 .env.test
 .env.production
 services/*/.env
 services/*/.env.docker
+!services/order/.env.docker
+
 # Dependencies
 node_modules/
 services/*/node_modules/
