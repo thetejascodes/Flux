@@ -7,7 +7,6 @@
 .env.production
 services/*/.env
 services/*/.env.docker
-services/order/.env.docker
 
 # Dependencies
 node_modules/
