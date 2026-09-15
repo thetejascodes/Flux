@@ -1,6 +1,7 @@
 import amqp from "amqplib";
 import type { ChannelModel, Channel } from "amqplib";
 import config from "../config/index.js";
+import ApiError from "../utils/api-error.js";
 
 let connection: ChannelModel | null = null;
 let chanel: Channel | null = null;
@@ -24,6 +25,16 @@ const connectRabbitMQ = async (): Promise<Channel> => {
   chanel = await connection.createChannel();
   await chanel.assertExchange(EXCHANGE_NAME, "topic", { durable: true });
   console.log("[rabbitmq] connected and channel ready");
+
+  return chanel;
+};
+
+const getChannel = (): Channel => {
+  if (!chanel) {
+    throw ApiError.internal(
+      "RabbitMQ channel not initialized. Call connectRabbitMQ() before publishing or subscribing.",
+    );
+  }
 
   return chanel;
 };
