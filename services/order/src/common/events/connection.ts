@@ -49,3 +49,5 @@ const closeRabbitMQ = async (): Promise<void> => {
     connection = null;
   }
 };
+
+export { connectRabbitMQ, getChannel, closeRabbitMQ, EXCHANGE_NAME };
