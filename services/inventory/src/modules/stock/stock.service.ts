@@ -1,11 +1,9 @@
 import { db } from "../../common/db/index.js";
 import { reservations, stock } from "../../common/db/schema.js";
-import { eq, and, sql, gte } from "drizzle-orm";
+import { eq, and, sql, gte, lt } from "drizzle-orm";
 import ApiError from "../../common/utils/api-error.js";
 import { redis } from "../../common/redis/client.js";
-import type {
-  ReserveStockInput
-} from "./dto/stock.dto.js";
+import type { ReserveStockInput } from "./dto/stock.dto.js";
 
 const RESERVATION_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -122,4 +120,16 @@ const confirmReservation = async (reservationId: string) => {
   await redis.del(`reservation:${reservationId}`);
 };
 
-export { reserveStock,releaseReservation,confirmReservation };
+const findExpiredPendingReservations = async () => {
+  return db
+    .select({ id: reservations.id })
+    .from(reservations)
+    .where(
+      and(
+        eq(reservations.status, "PENDING"),
+        lt(reservations.expiresAt, new Date(Date.now())),
+      ),
+    );
+};
+
+export { reserveStock, releaseReservation, confirmReservation };
