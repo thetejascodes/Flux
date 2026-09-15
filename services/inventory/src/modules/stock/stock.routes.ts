@@ -6,13 +6,13 @@ import { ReserveStockDto } from "./dto/stock.dto.js";
 const router = Router();
 
 router.post(
-  "/reservations",
+  "/",
   validate(ReserveStockDto),
   stockController.reserveStock,
 );
 
-router.patch("/reservations/:id/release", stockController.releaseReservation);
+router.patch("/:id/release", stockController.releaseReservation);
 
-router.patch("/reservations/:id/confirm", stockController.confirmReservation);
+router.patch("/:id/confirm", stockController.confirmReservation);
 
 export default router;
