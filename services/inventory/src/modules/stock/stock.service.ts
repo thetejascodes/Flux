@@ -73,5 +73,32 @@ const releaseReservation = async (reservationId: string) => {
       .set({ status: "RELEASED" })
       .where(eq(reservations.id, reservationId));
   });
-  await redis.del(`reservation:${reservationId}`)
+  await redis.del(`reservation:${reservationId}`);
+};
+
+const confirmReservation = async (reservationId: string) => {
+  const [reservation] = await db
+    .select()
+    .from(reservations)
+    .where(eq(reservations.id, reservationId));
+  if (!reservation) {
+    throw ApiError.notFound("Reservation not found");
+  }
+  await db.transaction(async (tx) => {
+    await tx
+      .update(stock)
+      .set({
+        quantityReserved: sql`${stock.quantityReserved} - ${reservation.quantity}`,
+      })
+      .where(
+        and(
+          eq(stock.productId, reservation.productId),
+          eq(stock.warehouseId, reservation.warehouseId),
+        ),
+      );
+    await tx
+      .update(reservations)
+      .set({ status: "CONFIRMED" })
+      .where(eq(reservations.id, reservationId));
+  });
 };
