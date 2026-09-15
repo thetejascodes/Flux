@@ -29,17 +29,48 @@ const reserveStock = async (input: ReserveStockInput) => {
   if (updated.length === 0) {
     throw ApiError.conflict("Insufficient stock");
   }
-  const [reservation] = await db.insert(reservations).values({
-    productId,
-    warehouseId,
-    quantity,
-    orderId,
-    expiresAt:new Date(Date.now() + RESERVATION_TTL_MS),
-    status:"PENDING"
-  }).returning();
-  if(!reservation){
+  const [reservation] = await db
+    .insert(reservations)
+    .values({
+      productId,
+      warehouseId,
+      quantity,
+      orderId,
+      expiresAt: new Date(Date.now() + RESERVATION_TTL_MS),
+      status: "PENDING",
+    })
+    .returning();
+  if (!reservation) {
     throw ApiError.internal("Failed to create reservation");
   }
-  await redis.setex(`reservation:${reservation.id}`,600,"active");
+  await redis.setex(`reservation:${reservation.id}`, 600, "active");
   return reservation;
+};
+
+const releaseReservation = async (reservationId: string) => {
+  const [reservation] = await db
+    .select()
+    .from(reservations)
+    .where(eq(reservations.id, reservationId));
+  if (!reservation) {
+    throw ApiError.notFound("Reservation not found");
+  }
+  await db.transaction(async (tx) => {
+    await tx
+      .update(stock)
+      .set({
+        quantityAvailable: sql`${stock.quantityAvailable} + ${reservation.quantity}`,
+        quantityReserved: sql`${stock.quantityReserved} - ${reservation.quantity}`,
+      })
+      .where(
+        and(
+          eq(stock.productId, reservation.productId),
+          eq(stock.warehouseId, reservation.warehouseId),
+        ),
+      );
+    await tx
+      .update(reservations)
+      .set({ status: "RELEASED" })
+      .where(eq(reservations.id, reservationId));
+  });
 };
