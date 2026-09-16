@@ -11,10 +11,10 @@ const subscribe = async (
   const channel = getChannel();
   await channel.assertQueue(queueName, { durable: true });
   await channel.bindQueue(queueName, EXCHANGE_NAME, routingKey);
+
   await channel.consume(queueName, async (msg: ConsumeMessage | null) => {
-    if (!msg) {
-      return;
-    }
+    if (!msg) return;
+
     try {
       const payload = JSON.parse(msg.content.toString());
       await handler(payload);
@@ -24,11 +24,20 @@ const subscribe = async (
         `[rabbitmq] handler failed for queue "${queueName}", routing key "${routingKey}":`,
         error,
       );
-      channel.nack(msg, false, false);
+
+      if (msg.fields.redelivered) {
+        console.error(
+          `[rabbitmq] giving up on message after 1 retry — queue="${queueName}" routingKey="${routingKey}"`,
+        );
+        channel.nack(msg, false, false);
+        channel.nack(msg, false, true);
+      }
     }
   });
+
   console.log(
     `[rabbitmq] subscribed: queue="${queueName}" routingKey="${routingKey}"`,
   );
 };
+
 export { subscribe };
