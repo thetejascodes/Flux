@@ -2,11 +2,13 @@ import "dotenv/config";
 import app from "./app.js";
 import config from "./common/config/index.js";
 import { connectRabbitMQ } from "./common/events/connection.js";
+import { registerOrderSagaHandlers } from "./modules/order/orders.gateway.js";
 
 const port = config.port;
 
 const startServer = async () => {
   await connectRabbitMQ();
+  await registerOrderSagaHandlers();
   app.listen(port, () => {
     console.log(`🚀 Order service running on port ${port}`);
   });
