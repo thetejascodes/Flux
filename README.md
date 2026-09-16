@@ -8,7 +8,9 @@ Most portfolio e-commerce projects are a product table, a cart, and a checkout f
 
 ## Status
 
-🚧 **In active development.** Gateway (full authentication), Catalog (product CRUD), and Inventory (stock reservations with expiry handling) are complete and tested end-to-end, including the full Gateway → service authenticated proxy path. Inventory's concurrency test — 100 concurrent requests against 1 unit of stock — correctly yields exactly 1 success and zero overselling. ADR-0003 is complete and accepted. Order, Payment, Delivery, and Notification are not yet started.
+🚧 **In active development.** Gateway (full authentication), Catalog (product CRUD), and Inventory (stock reservations, background expiry job, fully dockerized) are complete and tested end-to-end, including the full Gateway → service authenticated proxy path in Docker. Inventory's concurrency test — 100 concurrent requests against 1 unit of stock — correctly yields exactly 1 success and zero overselling. ADR-0001 through ADR-0003 are complete and accepted.
+
+Order Service now exists and is dockerized. The first half of the order saga — Order publishes `OrderCreated`, Inventory reacts, reserves stock, and publishes back — has been proven working end-to-end across both services and both databases, verified live in Docker. Payment Service, the compensation path, and distributed tracing are not yet built.
 
 ---
 
@@ -51,8 +53,9 @@ Most portfolio e-commerce projects are a product table, a cart, and a checkout f
    ┌─────────┐  ┌──────────┐ ┌────────┐ ┌─────────┐ ┌──────────────┐
    │ Catalog │  │Inventory │ │ Order  │ │Payment  │ │  Delivery    │
    │ Service │  │ Service  │ │Service │ │Service  │ │  Service     │
-   └─────────┘  └──────────┘ └───┬────┘ └─────────┘ └──────────────┘
-                                  │
+   └─────────┘  └────┬─────┘ └───┬────┘ └─────────┘ └──────────────┘
+                      │           │
+                      └─────┬─────┘
                           ┌───────▼────────┐
                           │  Event Broker   │
                           │   (RabbitMQ)    │
@@ -65,6 +68,8 @@ Most portfolio e-commerce projects are a product table, a cart, and a checkout f
 ```
 
 Each service owns its own PostgreSQL database. Synchronous calls (via the Gateway) are used only where an immediate response is required (e.g. "is this in stock right now?"); everything else — order state changes, payment confirmations, delivery assignment — flows as events through the broker. This is what lets services fail independently without taking each other down, and what makes the order saga possible.
+
+**Proven today:** `POST /orders` → Gateway authenticates and forwards `x-user-id` → Order writes a `PENDING` row and publishes `OrderCreated` → Inventory consumes it, atomically reserves stock, and publishes `InventoryReserved` → Order consumes that and updates its own row to `STOCK_RESERVED` with a real `reservationId`. Verified live across containers, not just in theory.
 
 ---
 
@@ -82,8 +87,8 @@ flux/
 ├── services/
 │   ├── gateway/        # auth (3 methods), routing        ✅ complete
 │   ├── catalog/        # products, search                 ✅ complete
-│   ├── inventory/      # stock, reservations               ✅ complete
-│   ├── order/          # saga orchestrator                 ⬜ not started
+│   ├── inventory/      # stock, reservations, expiry job   ✅ complete
+│   ├── order/          # saga orchestrator                 🚧 in progress
 │   ├── payment/        # charges, webhooks                 ⬜ not started
 │   ├── delivery/       # routing, ETA, tracking             ⬜ not started
 │   └── notification/   # event-driven alerts               ⬜ not started
@@ -97,13 +102,16 @@ services/<name>/
 ├── package.json, tsconfig.json, Dockerfile, .env, .env.docker
 └── src/
     ├── app.ts, server.ts
-    ├── common/{config, db, dto, middlewares, utils}/
+    ├── common/{config, db, dto, middlewares, utils, events}/
     └── modules/<feature>/
         ├── <feature>.routes.ts
-        ├── <feature>.controllers.ts
+        ├── <feature>.controller.ts
         ├── <feature>.service.ts
+        ├── <feature>.gateway.ts   # saga event subscribers, where applicable
         └── dto/
 ```
+
+`common/events/` (`connection.ts`, `publisher.ts`, `subscriber.ts`) wraps RabbitMQ behind a small generic API — `publish(routingKey, payload)` and `subscribe(queue, routingKey, handler)` — shared across every service that participates in the saga.
 
 ---
 
@@ -113,8 +121,8 @@ services/<name>/
 | --- | --- | --- |
 | **Gateway** | ✅ Complete | Auth (email/password, OTP, Google), request routing, token validation |
 | **Catalog** | ✅ Complete | Products: create, get, list (filtered/paginated), update |
-| **Inventory** | ✅ Complete | Per-location stock, concurrency-safe reservations with timeout |
-| **Order** | ⬜ Not started | Order lifecycle, saga orchestration across services |
+| **Inventory** | ✅ Complete | Per-location stock, concurrency-safe reservations with timeout, background expiry job, dockerized and proxy-verified |
+| **Order** | 🚧 In progress | Order creation, publishes `OrderCreated`, reacts to `InventoryReserved` / `InventoryReservationFailed`. Saga orchestration toward Payment not yet wired. |
 | **Payment** | ⬜ Not started | Payment processing, idempotency keys, webhook reconciliation |
 | **Delivery** | ⬜ Not started | Nearest dark-store/driver assignment, ETA, live tracking |
 | **Notification** | ⬜ Not started | Order-status updates via SMS/push, driven entirely by events |
@@ -129,7 +137,7 @@ Gateway does **not** use full OpenID Connect — that's the right tool for an ex
 - **OTP (phone)** — Twilio-backed, rate-limited (3/hour), row-locked verification to prevent replay
 - **Google OAuth** — implemented via direct HTTPS calls to Google's endpoints, no SDK
 
-All three produce the same JWT (RS256, 15-minute expiry) + opaque refresh token pair. Refresh tokens are random values, hashed and stored server-side in a `sessions` table, and rotate on every use — so they can be revoked instantly, unlike a signed refresh JWT. The Gateway validates every incoming request's token before proxying it to a downstream service; services trust the Gateway's `x-user-id` header rather than re-authenticating every call. See [ADR-0002](docs/adr/0002-authentication-strategy.md) for the full reasoning.
+All three produce the same JWT (RS256, 15-minute expiry) + opaque refresh token pair. Refresh tokens are random values, hashed and stored server-side in a `sessions` table, and rotate on every use — so they can be revoked instantly, unlike a signed refresh JWT. The Gateway validates every incoming request's token before proxying it to a downstream service, and forwards the verified user's ID via an `x-user-id` header — services trust this header rather than re-authenticating every call. See [ADR-0002](docs/adr/0002-authentication-strategy.md) for the full reasoning.
 
 ---
 
@@ -141,7 +149,7 @@ All three produce the same JWT (RS256, 15-minute expiry) + opaque refresh token 
 | **Runtime** | Node.js 20, Express 5 | Per-service HTTP APIs |
 | **Database** | PostgreSQL (one per service), Drizzle ORM | Durable, service-owned data |
 | **Cache / Locking** | Valkey (Redis-compatible) | Stock reservation TTLs, distributed locks |
-| **Event Broker** | RabbitMQ | Async communication between services |
+| **Event Broker** | RabbitMQ (topic exchange, `flux.events`) | Async communication between services |
 | **Auth** | JWT (RS256), bcrypt, Twilio, Google OAuth2 (raw HTTPS) | Multi-method authentication |
 | **Validation** | Zod + BaseDto pattern | Schema-based DTO validation |
 | **Real-time** | WebSocket | Live order and delivery tracking (planned) |
@@ -170,14 +178,20 @@ npx drizzle-kit migrate
 npm run dev
 ```
 
-### 3. Verify
+### 3. Or run everything through Docker
+
+```bash
+docker compose up -d --build
+```
+
+### 4. Verify
 
 ```bash
 curl http://localhost:4000/health
 # { "status": "ok" }
 ```
 
-Each service has two env files: `.env` (uses `localhost`, for local tooling) and `.env.docker` (uses `postgres` as the hostname, for containers) — `docker compose` reads the latter automatically.
+Each service has two env files: `.env` (uses `localhost`, for local tooling) and `.env.docker` (uses the Docker service name as the hostname, for containers) — `docker compose` reads the latter automatically. `.env.example` / `.env.docker.example` templates are committed for each service; the real files are gitignored.
 
 ---
 
@@ -185,8 +199,8 @@ Each service has two env files: `.env` (uses `localhost`, for local tooling) and
 
 The three problems Flux is actually built to solve well — everything else exists to support them.
 
-1. **Zero overselling under concurrency** — two buyers hitting "buy" on the last unit at the same instant must never both succeed. Solved with an atomic conditional `UPDATE` (no explicit row lock needed — Postgres's own statement-level atomicity does the work), reservation-with-timeout, and proven under a real load test: 100 concurrent requests against 1 unit of stock, exactly 1 success. *(Inventory — complete.)*
-2. **The order saga** — order placed → inventory reserved → payment charged → delivery assigned. If any step fails, prior steps are compensated instead of leaving a broken order behind. *(Order/Payment — not yet built.)*
+1. **Zero overselling under concurrency** — two buyers hitting "buy" on the last unit at the same instant must never both succeed. Solved with an atomic conditional `UPDATE` (no explicit row lock needed — Postgres's own statement-level atomicity does the work), reservation-with-timeout, and a background job that auto-releases abandoned reservations. Proven under a real load test: 100 concurrent requests against 1 unit of stock, exactly 1 success — and proven live for the expiry path: an unconfirmed reservation was left to time out and was correctly auto-released, restoring stock without manual intervention. *(Inventory — complete.)*
+2. **The order saga** — order placed → inventory reserved → payment charged → delivery assigned. If any step fails, prior steps are compensated instead of leaving a broken order behind. The first leg (Order ↔ Inventory) is built and verified live in Docker: a real `POST /orders` request correctly results in a reserved stock unit and an updated order status via async events, with no synchronous call between the two services. *(Order/Inventory leg — proven. Payment leg and compensation path — not yet built.)*
 3. **Nearest-stock, nearest-driver routing** — orders assigned to the closest dark store with available stock and the closest available delivery partner, with a real ETA calculation. *(Delivery — not yet built.)*
 
 ---
@@ -201,14 +215,18 @@ The three problems Flux is actually built to solve well — everything else exis
 ### Phase 1 — Inventory & Concurrency
 - [x] Per-location stock model, atomic reservation with timeout
 - [x] Load test proving zero overselling — 100 concurrent requests, 1 unit of stock, exactly 1 success
-- [ ] Background job to auto-release expired reservations
-- [ ] Dockerize and verify through Gateway's proxy in Docker
+- [x] Background job to auto-release expired reservations — built and verified live (reservation expired, stock correctly restored)
+- [x] Dockerized and verified through Gateway's proxy in Docker
 - [x] ADR-0003: concurrency approach and trade-offs (completed and accepted)
 
 ### Phase 2 — Order Saga
-- [ ] Order Service as saga orchestrator
+- [x] Order Service scaffolded (schema, DTOs, RabbitMQ event plumbing shared across services)
+- [x] Order publishes `OrderCreated`; Inventory reacts via its own event subscribers instead of a direct API call
+- [x] Order ↔ Inventory leg proven end-to-end in Docker: reservation succeeds, order status updates to `STOCK_RESERVED` with a real `reservationId`
 - [ ] Payment Service with idempotency + webhooks
-- [ ] Compensating transactions on failure, distributed tracing
+- [ ] Order → Payment leg, and compensating transaction on payment failure (release reservation)
+- [ ] Distributed tracing (OpenTelemetry + Jaeger) across the full saga
+- [ ] ADR-0004: saga pattern — choreography vs orchestration
 
 ### Phase 3 — Delivery & Routing
 - [ ] Multi-warehouse/dark-store model, nearest-stock + nearest-driver assignment
@@ -238,7 +256,7 @@ Deliberately out of scope, so the project ships instead of sprawling:
 - [ADR-0001: Database-per-service vs shared database](docs/adr/0001-database-selection.md)
 - [ADR-0002: Authentication strategy](docs/adr/0002-authentication-strategy.md)
 - [ADR-0003: Concurrency strategy for inventory reservation](docs/adr/0003-concurrency-approach.md)
-- ADR-0004: Saga pattern — choreography vs orchestration *(pending)*
+- ADR-0004: Saga pattern — choreography vs orchestration *(pending — Order ↔ Inventory leg is already choreographed via RabbitMQ; ADR to be written once the Payment leg closes the loop)*
 - ADR-0005: Geospatial routing approach *(pending)*
 
 ---
