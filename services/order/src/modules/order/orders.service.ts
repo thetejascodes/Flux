@@ -53,3 +53,5 @@ const updateOrderStatus = async (
   }
   return order;
 };
+
+export { placeOrder,getOrderById,updateOrderStatus };
