@@ -11,6 +11,9 @@ const config = {
   port: Number(optional("PORT", "4002")),
   database: { url: required("DATABASE_URL") },
   redisUrl: required("REDIS_URL"),
+  rabbitmq: {
+    url: required("RABBITMQ_URL"),
+  },
 };
 
 export default config;
