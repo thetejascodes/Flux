@@ -62,3 +62,5 @@ const registerInventorySagaHandlers = async () => {
   );
   console.log("[inventory-saga] all event handlers registered");
 };
+
+export { registerInventorySagaHandlers };
