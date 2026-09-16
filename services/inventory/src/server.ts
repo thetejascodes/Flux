@@ -8,9 +8,10 @@ import { registerInventorySagaHandlers } from "./modules/stock/stock.gateway.js"
 const port = config.port;
 
 const startServer = async () => {
-  startExpiryJob();
   await connectRabbitMQ();
   await registerInventorySagaHandlers();
+  startExpiryJob();
+
   app.listen(port, () => {
     console.log(`🚀 Inventory service running on port ${port}`);
   });
