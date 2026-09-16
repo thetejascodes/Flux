@@ -1,7 +1,7 @@
 import "dotenv/config";
 import app from "./app.js";
-
-const port = 4004;
+import config from "./common/config/index.js";
+const port = config.port;
 
 const startServer = async () => {
   
