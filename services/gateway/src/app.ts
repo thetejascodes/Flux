@@ -13,7 +13,7 @@ app.get("/health", (req, res) => {
 
 app.use("/catalog", isAuthenticated, proxyTo(config.services.catalogUrl));
 app.use("/inventory", isAuthenticated, proxyTo(config.services.inventoryUrl));
-// app.use("/orders",    isAuthenticated, proxyTo(config.services.orderUrl));
+app.use("/orders",    isAuthenticated, proxyTo(config.services.orderUrl));
 // app.use("/payments",  isAuthenticated, proxyTo(config.services.paymentUrl));
 // app.use("/delivery",  isAuthenticated, proxyTo(config.services.deliveryUrl));
 

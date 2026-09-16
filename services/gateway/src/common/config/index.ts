@@ -42,6 +42,7 @@ const config = {
   services: {
     catalogUrl: optional("CATALOG_SERVICE_URL", "http://localhost:4001"),
     inventoryUrl: optional("INVENTORY_SERVICE_URL", "http://localhost:4002"),
+    orderUrl: optional("ORDER_SERVICE_URL", "http://localhost:4003"),
   },
 
   otpStubMode: optional("OTP_STUB_MODE", "true") === "true",
