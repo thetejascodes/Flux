@@ -107,7 +107,7 @@ services:
     ports:
       - "4004:4004"
     env_file:
-      - ./services/payment/.env
+      - ./services/payment/.env.docker
     depends_on:
       postgres:
         condition: service_healthy
