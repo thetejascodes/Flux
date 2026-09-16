@@ -101,18 +101,18 @@ services:
       rabbitmq:
         condition: service_healthy
 
-  # payment:
-  #   build: ./services/payment
-  #   restart: unless-stopped
-  #   ports:
-  #     - "4004:4004"
-  #   env_file:
-  #     - ./services/payment/.env
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     rabbitmq:
-  #       condition: service_healthy
+  payment:
+    build: ./services/payment
+    restart: unless-stopped
+    ports:
+      - "4004:4004"
+    env_file:
+      - ./services/payment/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
 
   # delivery:
   #   build: ./services/delivery
