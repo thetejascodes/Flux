@@ -20,3 +20,17 @@ const placeOrder = async (
     next(error);
   }
 };
+
+const getOrderById = async (
+  req: Request<OrderIdParams>,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const result = await orderService.getOrderById(req.params.id);
+    return ApiResponse.ok(res, "Order fetched successfully", result);
+  } catch (error) {
+    next(error);
+  }
+};
+
