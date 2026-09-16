@@ -29,3 +29,11 @@ const placeOrder = async (userId: string, input: PlaceOrderInput) => {
   });
   return order;
 };
+
+const getOrderById = async (id: string) => {
+  const [order] = await db.select().from(orders).where(eq(orders.id, id));
+  if (!order) {
+    throw ApiError.notFound("Order not found");
+  }
+  return order;
+};
