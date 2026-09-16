@@ -1,1 +1,1 @@
-export * from "../../modules/order/order.schema.js";
+export * from "../../modules/order/orders.schema.js";
