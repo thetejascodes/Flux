@@ -34,3 +34,4 @@ const getOrderById = async (
   }
 };
 
+export { placeOrder,getOrderById };
