@@ -37,3 +37,19 @@ const getOrderById = async (id: string) => {
   }
   return order;
 };
+
+const updateOrderStatus = async (
+  orderId: string,
+  status: (typeof orderStatus.enumValues)[number],
+  extra: Partial<{ reservationId: string; paymentId: string }> = {},
+) => {
+  const [order] = await db
+    .update(orders)
+    .set({ status, ...extra })
+    .where(eq(orders.id, orderId))
+    .returning();
+  if (!order) {
+    throw ApiError.notFound("Order not found");
+  }
+  return order;
+};
