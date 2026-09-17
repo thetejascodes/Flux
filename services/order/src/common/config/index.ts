@@ -11,6 +11,9 @@ const config = {
   port: Number(optional("PORT", "4003")),
   database: { url: required("DATABASE_URL") },
   rabbitmq: { url: required("RABBITMQ_URL") },
+  services: {
+    catalogUrl: required("CATALOG_SERVICE_URL"),
+  },
 };
 
 export default config;
