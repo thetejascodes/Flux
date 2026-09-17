@@ -10,9 +10,9 @@ Most portfolio e-commerce projects are a product table, a cart, and a checkout f
 
 🚧 **In active development.** Gateway (full authentication), Catalog (product CRUD), and Inventory (stock reservations, background expiry job, fully dockerized) are complete and tested end-to-end, including the full Gateway → service authenticated proxy path in Docker. Inventory's concurrency test — 100 concurrent requests against 1 unit of stock — correctly yields exactly 1 success and zero overselling.
 
-**The full order saga is now built and proven, both branches.** Order and Payment services exist, are dockerized, and communicate with Inventory purely through RabbitMQ events — no synchronous service-to-service calls anywhere in the flow. A real `POST /orders` request correctly cascades through Order → Inventory → Payment and back, ending in a `CONFIRMED` order with a real `reservationId` and `paymentId`. The compensation path has also been proven under a genuine random payment failure: the order correctly reached `PAYMENT_FAILED`, and the corresponding reservation in Inventory's independent database was confirmed `RELEASED` — verified by direct database query, not just application logs.
+**The full order saga is now built and proven, both branches, with real pricing.** Order and Payment services exist, are dockerized, and communicate with Inventory purely through RabbitMQ events — no synchronous service-to-service calls anywhere in that flow. A real `POST /orders` request looks up the live price from Catalog, cascades through Order → Inventory → Payment and back, and ends in a `CONFIRMED` order carrying a real `reservationId`, `paymentId`, and computed `totalAmount` — verified to match, to the cent, the amount independently recorded in Payment's own database. The compensation path has also been proven under a genuine random payment failure: the order correctly reached `PAYMENT_FAILED`, and the corresponding reservation in Inventory's independent database was confirmed `RELEASED` — verified by direct database query, not just application logs.
 
-ADR-0001 through ADR-0004 are complete and accepted. Distributed tracing (OpenTelemetry + Jaeger) and real Catalog-based pricing (currently a fixed placeholder amount) are the two remaining items before Phase 2 formally closes.
+ADR-0001 through ADR-0004 are complete and accepted. Distributed tracing (OpenTelemetry + Jaeger) is the one remaining item before Phase 2 formally closes.
 
 ---
 
@@ -55,9 +55,11 @@ ADR-0001 through ADR-0004 are complete and accepted. Distributed tracing (OpenTe
    ┌─────────┐  ┌──────────┐ ┌────────┐ ┌─────────┐ ┌──────────────┐
    │ Catalog │  │Inventory │ │ Order  │ │Payment  │ │  Delivery    │
    │ Service │  │ Service  │ │Service │ │Service  │ │  Service     │
-   └─────────┘  └────┬─────┘ └───┬────┘ └────┬────┘ └──────────────┘
-                      │           │           │
-                      └─────┬─────┴─────┬─────┘
+   └────▲────┘  └────┬─────┘ └───┬────┘ └────┬────┘ └──────────────┘
+        │             │           │           │
+        └─────────────┼───────────┘           │
+                  (sync, price lookup)         │
+                      └─────┬─────┴─────┬──────┘
                           ┌───────▼────────┐
                           │  Event Broker   │
                           │   (RabbitMQ)    │
@@ -69,11 +71,11 @@ ADR-0001 through ADR-0004 are complete and accepted. Distributed tracing (OpenTe
                           └────────────────┘
 ```
 
-Each service owns its own PostgreSQL database. Synchronous calls (via the Gateway) are used only where an immediate response is required (e.g. "is this in stock right now?"); everything else — order state changes, payment confirmations, delivery assignment — flows as events through the broker. This is what lets services fail independently without taking each other down, and what makes the order saga possible.
+Each service owns its own PostgreSQL database. Synchronous calls (via the Gateway, or a single direct service-to-service HTTP call like Order's pricing lookup) are used only where an immediate response is required; everything else — order state changes, payment confirmations, delivery assignment — flows as events through the broker. This is what lets services fail independently without taking each other down, and what makes the order saga possible.
 
-**Proven, both branches:**
+**Proven, both branches, with real pricing:**
 
-- **Success:** `POST /orders` → Gateway authenticates and forwards `x-user-id` → Order writes a `PENDING` row and publishes `OrderCreated` → Inventory atomically reserves stock and publishes `InventoryReserved` → Order updates to `STOCK_RESERVED` and publishes `ChargePayment` → Payment simulates a charge, records it, and publishes `PaymentSucceeded` → Order finalizes to `CONFIRMED`. Five events, three services, three databases, zero direct service-to-service calls — verified live across containers.
+- **Success:** `POST /orders` → Gateway authenticates and forwards `x-user-id` → Order looks up the live unit price from Catalog, computes `totalAmount`, writes a `PENDING` row, and publishes `OrderCreated` → Inventory atomically reserves stock and publishes `InventoryReserved` → Order updates to `STOCK_RESERVED` and publishes `ChargePayment` carrying the real `totalAmount` → Payment simulates a charge for that exact amount, records it, and publishes `PaymentSucceeded` → Order finalizes to `CONFIRMED`. Verified end-to-end: an order for 2 units of a $12.00 product produced `totalAmount: "24.00"` on the order and an identical `amount: 24.00` recorded independently in Payment's own database.
 - **Failure / compensation:** the same flow, except Payment's simulated charge fails and publishes `PaymentFailed` → Order marks the order `PAYMENT_FAILED` and publishes `ReleaseReservation` → Inventory releases the held stock. Confirmed directly against Inventory's database: the reservation's status transitioned to `RELEASED`.
 
 See [ADR-0004](docs/adr/0004-saga-choreography.md) for the full reasoning behind choosing choreography over a central orchestrator.
@@ -95,7 +97,7 @@ flux/
 │   ├── gateway/        # auth (3 methods), routing        ✅ complete
 │   ├── catalog/        # products, search                 ✅ complete
 │   ├── inventory/      # stock, reservations, expiry job   ✅ complete
-│   ├── order/          # saga participant, order lifecycle  ✅ complete (pricing still stubbed)
+│   ├── order/          # saga participant, order lifecycle  ✅ complete
 │   ├── payment/        # simulated charges, idempotency     ✅ complete (real provider — future work)
 │   ├── delivery/       # routing, ETA, tracking             ⬜ not started
 │   └── notification/   # event-driven alerts               ⬜ not started
@@ -118,7 +120,7 @@ services/<name>/
         └── dto/
 ```
 
-`common/events/` (`connection.ts`, `publisher.ts`, `subscriber.ts`) wraps RabbitMQ behind a small generic API — `publish(routingKey, payload)` and `subscribe(queue, routingKey, handler)` — byte-for-byte identical across every service that participates in the saga. Payment has no HTTP routes at all; it is purely event-driven, reacting only to `ChargePayment`.
+`common/events/` (`connection.ts`, `publisher.ts`, `subscriber.ts`) wraps RabbitMQ behind a small generic API — `publish(routingKey, payload)` and `subscribe(queue, routingKey, handler)` — byte-for-byte identical across every service that participates in the saga. Payment has no HTTP routes at all; it is purely event-driven, reacting only to `ChargePayment`. Order is the one exception to "no synchronous calls": it makes a single direct HTTP call to Catalog at order-placement time to fetch the current price, since that value must be known before an order can even be created — everything after that point is pure events.
 
 ---
 
@@ -129,7 +131,7 @@ services/<name>/
 | **Gateway** | ✅ Complete | Auth (email/password, OTP, Google), request routing, token validation |
 | **Catalog** | ✅ Complete | Products: create, get, list (filtered/paginated), update |
 | **Inventory** | ✅ Complete | Per-location stock, concurrency-safe reservations with timeout, background expiry job, dockerized and proxy-verified |
-| **Order** | ✅ Complete | Order lifecycle, publishes `OrderCreated`, reacts to Inventory's and Payment's events, drives the saga to `CONFIRMED` or `PAYMENT_FAILED`. Pricing is currently a fixed placeholder amount rather than a real Catalog lookup. |
+| **Order** | ✅ Complete | Order lifecycle, looks up real pricing from Catalog at placement time, publishes `OrderCreated`, reacts to Inventory's and Payment's events, drives the saga to `CONFIRMED` or `PAYMENT_FAILED` |
 | **Payment** | ✅ Complete | Reacts to `ChargePayment`, simulates a charge outcome, idempotent on redelivery via a unique constraint on `orderId`, publishes `PaymentSucceeded` / `PaymentFailed`. Real payment provider integration is future work. |
 | **Delivery** | ⬜ Not started | Nearest dark-store/driver assignment, ETA, live tracking |
 | **Notification** | ⬜ Not started | Order-status updates via SMS/push, driven entirely by events |
@@ -207,7 +209,7 @@ curl -X POST http://localhost:4000/orders \
   -d '{"productId": "...", "warehouseId": "...", "quantity": 1}'
 ```
 
-Watch `docker compose logs -f order inventory payment` to see the event chain fire in real time. Payment simulates a charge with a ~90% success rate, so repeated requests will eventually surface both the success path (`CONFIRMED`) and the compensation path (`PAYMENT_FAILED` with the reservation released).
+The response includes a real `totalAmount`, computed from Catalog's current price for that product. Watch `docker compose logs -f order inventory payment` to see the event chain fire in real time. Payment simulates a charge with a ~90% success rate, so repeated requests will eventually surface both the success path (`CONFIRMED`) and the compensation path (`PAYMENT_FAILED` with the reservation released).
 
 Each service has two env files: `.env` (uses `localhost`, for local tooling) and `.env.docker` (uses the Docker service name as the hostname, for containers) — `docker compose` reads the latter automatically. `.env.example` / `.env.docker.example` templates are committed for each service; the real files are gitignored.
 
@@ -218,7 +220,7 @@ Each service has two env files: `.env` (uses `localhost`, for local tooling) and
 The three problems Flux is actually built to solve well — everything else exists to support them.
 
 1. **Zero overselling under concurrency** — two buyers hitting "buy" on the last unit at the same instant must never both succeed. Solved with an atomic conditional `UPDATE` (no explicit row lock needed — Postgres's own statement-level atomicity does the work), reservation-with-timeout, and a background job that auto-releases abandoned reservations. Proven under a real load test: 100 concurrent requests against 1 unit of stock, exactly 1 success — and proven live for the expiry path: an unconfirmed reservation was left to time out and was correctly auto-released, restoring stock without manual intervention. *(Inventory — complete.)*
-2. **The order saga** — order placed → inventory reserved → payment charged. If any step fails, prior steps are compensated instead of leaving a broken order behind. Both branches are built and proven live in Docker: the success path ends in a `CONFIRMED` order with real `reservationId` and `paymentId`; the failure path, triggered by a genuine random payment decline, ends in `PAYMENT_FAILED` with the Inventory reservation independently confirmed `RELEASED` via direct database query. *(Order/Inventory/Payment saga — complete. Delivery step — not yet built.)*
+2. **The order saga** — order placed → inventory reserved → payment charged. If any step fails, prior steps are compensated instead of leaving a broken order behind. Both branches are built and proven live in Docker, with real pricing throughout: the success path ends in a `CONFIRMED` order with a real `reservationId`, `paymentId`, and computed `totalAmount` that matches Payment's independently recorded amount to the cent; the failure path, triggered by a genuine random payment decline, ends in `PAYMENT_FAILED` with the Inventory reservation independently confirmed `RELEASED` via direct database query. *(Order/Inventory/Payment saga — complete. Delivery step — not yet built.)*
 3. **Nearest-stock, nearest-driver routing** — orders assigned to the closest dark store with available stock and the closest available delivery partner, with a real ETA calculation. *(Delivery — not yet built.)*
 
 ---
@@ -245,7 +247,7 @@ The three problems Flux is actually built to solve well — everything else exis
 - [x] Order → Payment leg proven: `ChargePayment` → `PaymentSucceeded` → order `CONFIRMED`, with real `paymentId`
 - [x] Compensating transaction proven under a genuine random payment failure: `PaymentFailed` → order `PAYMENT_FAILED` → `ReleaseReservation` → reservation confirmed `RELEASED` in Inventory's database
 - [x] ADR-0004: saga pattern — choreography vs orchestration (completed and accepted)
-- [ ] Real Catalog-based pricing (currently a fixed placeholder `amount` in `ChargePayment`)
+- [x] Real Catalog-based pricing: Order looks up the live price at placement time; verified end-to-end against Payment's independently recorded amount
 - [ ] Distributed tracing (OpenTelemetry + Jaeger) across the full saga
 
 ### Phase 3 — Delivery & Routing
