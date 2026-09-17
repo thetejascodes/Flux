@@ -79,4 +79,5 @@ const updateOrderStatus = async (
   return order;
 };
 
-export { placeOrder, getOrderById, updateOrderStatus };
+export { placeOrder, getOrderById, updateOrderStatus,getProductPrice };
+
