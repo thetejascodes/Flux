@@ -1,4 +1,4 @@
-import { pgTable, uuid, integer, timestamp, pgEnum, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, integer, timestamp, pgEnum, index,numeric } from "drizzle-orm/pg-core";
 
 export const orderStatus = pgEnum("order_status", [
   "PENDING",
@@ -19,6 +19,7 @@ export const orders = pgTable(
     quantity: integer("quantity").notNull(),
     status: orderStatus("status").notNull().default("PENDING"),
     reservationId: uuid("reservation_id"),
+    totalAmount: numeric("total_amount", { precision: 10, scale: 2 }).notNull(),
     paymentId: uuid("payment_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
