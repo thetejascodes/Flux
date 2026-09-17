@@ -45,6 +45,15 @@ services:
       timeout: 5s
       retries: 5
 
+  jaeger:
+    image: jaegertracing/all-in-one:1.62
+    restart: unless-stopped
+    ports:
+      - "16686:16686"  # Jaeger UI: http://localhost:16686
+      - "4318:4318"    # OTLP HTTP receiver (services send traces here)
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+
   gateway:
     build: ./services/gateway
     restart: unless-stopped
@@ -87,6 +96,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      jaeger:
+        condition: service_started
 
   order:
     build: ./services/order
@@ -100,6 +111,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      jaeger:
+        condition: service_started
 
   payment:
     build: ./services/payment
@@ -113,6 +126,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      jaeger:
+        condition: service_started
 
   # delivery:
   #   build: ./services/delivery
