@@ -4,9 +4,33 @@ import { eq } from "drizzle-orm";
 import ApiError from "../../common/utils/api-error.js";
 import { publish } from "../../common/events/publisher.js";
 import type { PlaceOrderInput } from "./dto/orders.dto.js";
+import config from "../../common/config/index.js";
+
+interface CatalogProductResponse {
+  status: string;
+  message: string;
+  data: {
+    id: string;
+    price: string;
+  };
+}
+
+const getProductPrice = async (productId: string): Promise<number> => {
+  const response = await fetch(
+    `${config.services.catalogUrl}/products/${productId}`,
+  );
+  if (!response.ok) {
+    throw ApiError.badRequest("Product not found in catalog");
+  }
+  const body = (await response.json()) as CatalogProductResponse;
+  return parseFloat(body.data.price);
+};
 
 const placeOrder = async (userId: string, input: PlaceOrderInput) => {
   const { productId, warehouseId, quantity } = input;
+  const unitPrice = await getProductPrice(productId);
+  const totalAmount = (unitPrice * quantity).toFixed();
+
   const [order] = await db
     .insert(orders)
     .values({
@@ -14,6 +38,7 @@ const placeOrder = async (userId: string, input: PlaceOrderInput) => {
       productId,
       warehouseId,
       quantity,
+      totalAmount,
       status: "PENDING",
     })
     .returning();
@@ -54,4 +79,4 @@ const updateOrderStatus = async (
   return order;
 };
 
-export { placeOrder,getOrderById,updateOrderStatus };
+export { placeOrder, getOrderById, updateOrderStatus };
