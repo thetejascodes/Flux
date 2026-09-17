@@ -51,3 +51,4 @@ const getPaymentByOrderId = async (orderId: string) => {
   }
   return payment;
 };
+export { chargePayment, getPaymentByOrderId };
