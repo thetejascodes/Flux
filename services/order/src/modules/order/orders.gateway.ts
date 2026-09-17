@@ -1,11 +1,6 @@
+import { publish } from "../../common/events/publisher.js";
 import { subscribe } from "../../common/events/subscriber.js";
 import { updateOrderStatus } from "./orders.service.js";
-
-/**
- * Order's side of the saga. Reacts to events Inventory (and later
- * Payment) publish. One handler = one state transition, same discipline
- * as Inventory's gateway.
- */
 
 const registerOrderSagaHandlers = async () => {
   await subscribe(
@@ -18,11 +13,12 @@ const registerOrderSagaHandlers = async () => {
         amount: number;
       };
       await updateOrderStatus(orderId, "STOCK_RESERVED", { reservationId });
-      // Next step of the saga (Phase 2, once Payment exists): publish
-      // something Payment listens for, e.g. publish("ChargePayment", {...}).
+      await publish("ChargePayment", {
+        orderId,
+        amount: "100.00",
+      });
     },
   );
-  // Inventory could not reserve stock — genuinely out of stock.
   await subscribe(
     "order.inventory-reservation-failed",
     "InventoryReservationFailed",
@@ -31,6 +27,30 @@ const registerOrderSagaHandlers = async () => {
       await updateOrderStatus(orderId, "STOCK_RESERVATION_FAILED");
     },
   );
+  await subscribe(
+    "order.payment-succeeded",
+    "PaymentSucceeded",
+    async (payload) => {
+      const { orderId, paymentId } = payload as {
+        orderId: string;
+        paymentId: string;
+      };
+      await updateOrderStatus(orderId, "CONFIRMED", { paymentId });
+    },
+  );
+  await subscribe("order.payment-failed", "PaymentFailed", async (payload) => {
+    const { orderId, paymentId } = payload as {
+      orderId: string;
+      paymentId: string;
+    };
+    const order = await updateOrderStatus(orderId, "PAYMENT_FAILED");
+    if (order.reservationId) {
+      await publish("ReleaseReservation", {
+        orderId,
+        reservationId: order.reservationId,
+      });
+    }
+  });
   console.log("[order-saga] all event handlers registered");
 };
 
