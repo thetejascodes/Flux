@@ -40,3 +40,14 @@ const chargePayment = async (input: ChargePaymentInput) => {
     }
   }
 };
+
+const getPaymentByOrderId = async (orderId: string) => {
+  const [payment] = await db
+    .select()
+    .from(payments)
+    .where(eq(payments.orderId, orderId));
+  if (!payment) {
+    throw ApiError.notFound("Payment not found");
+  }
+  return payment;
+};
