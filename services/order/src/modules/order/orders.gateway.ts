@@ -12,10 +12,10 @@ const registerOrderSagaHandlers = async () => {
         reservationId: string;
         amount: number;
       };
-      await updateOrderStatus(orderId, "STOCK_RESERVED", { reservationId });
+      const order = await updateOrderStatus(orderId, "STOCK_RESERVED", { reservationId });
       await publish("ChargePayment", {
         orderId,
-        amount: "100.00",
+        amount:order.totalAmount,
       });
     },
   );
