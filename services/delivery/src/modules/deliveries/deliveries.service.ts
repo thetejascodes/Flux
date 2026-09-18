@@ -1,6 +1,6 @@
 import { db } from "../../common/db/index.js";
 import { drivers, deliveries } from "../../common/db/schema.js";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import ApiError from "../../common/utils/api-error.js";
 
 const haversineDistanceKm = (
@@ -73,6 +73,16 @@ const assignDelivery = async (
   );
 
   const estimatedArrival = estimateArrival(distanceKm);
+  const claimed = await db
+    .update(drivers)
+    .set({ status: "BUSY" })
+    .where(and(eq(drivers.id, driver.id), eq(drivers.status, "AVAILABLE")))
+    .returning();
+
+  if (claimed.length === 0) {
+    throw ApiError.conflict("Driver was claimed by another delivery — retry");
+  }
+
   const [delivery] = await db
     .insert(deliveries)
     .values({
@@ -87,10 +97,6 @@ const assignDelivery = async (
     throw ApiError.internal("Failed to create delivery");
   }
 
-  await db
-    .update(drivers)
-    .set({ status: "BUSY" })
-    .where(eq(drivers.id, driver.id));
   return delivery;
 };
 
