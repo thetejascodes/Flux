@@ -12,10 +12,12 @@ const registerOrderSagaHandlers = async () => {
         reservationId: string;
         amount: number;
       };
-      const order = await updateOrderStatus(orderId, "STOCK_RESERVED", { reservationId });
+      const order = await updateOrderStatus(orderId, "STOCK_RESERVED", {
+        reservationId,
+      });
       await publish("ChargePayment", {
         orderId,
-        amount:order.totalAmount,
+        amount: order.totalAmount,
       });
     },
   );
@@ -35,7 +37,15 @@ const registerOrderSagaHandlers = async () => {
         orderId: string;
         paymentId: string;
       };
-      await updateOrderStatus(orderId, "CONFIRMED", { paymentId });
+      const order = await updateOrderStatus(orderId, "CONFIRMED", {
+        paymentId,
+      });
+      if (order.warehouseId) {
+        await publish("AssignDelivery", {
+          orderId,
+          warehouseId: order.warehouseId,
+        });
+      }
     },
   );
   await subscribe("order.payment-failed", "PaymentFailed", async (payload) => {
