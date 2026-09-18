@@ -129,18 +129,18 @@ services:
       jaeger:
         condition: service_started
 
-  # delivery:
-  #   build: ./services/delivery
-  #   restart: unless-stopped
-  #   ports:
-  #     - "4005:4005"
-  #   env_file:
-  #     - ./services/delivery/.env
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     rabbitmq:
-  #       condition: service_healthy
+  delivery:
+    build: ./services/delivery
+    restart: unless-stopped
+    ports:
+      - "4005:4005"
+    env_file:
+      - ./services/delivery/.env.docker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
 
   # notification:
   #   build: ./services/notification
