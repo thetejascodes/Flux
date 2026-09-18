@@ -12,7 +12,7 @@ Most portfolio e-commerce projects are a product table, a cart, and a checkout f
 
 **The full order saga is now built and proven, both branches, with real pricing.** Order and Payment services exist, are dockerized, and communicate with Inventory purely through RabbitMQ events — no synchronous service-to-service calls anywhere in that flow. A real `POST /orders` request looks up the live price from Catalog, cascades through Order → Inventory → Payment and back, and ends in a `CONFIRMED` order carrying a real `reservationId`, `paymentId`, and computed `totalAmount` — verified to match, to the cent, the amount independently recorded in Payment's own database. The compensation path has also been proven under a genuine random payment failure: the order correctly reached `PAYMENT_FAILED`, and the corresponding reservation in Inventory's independent database was confirmed `RELEASED` — verified by direct database query, not just application logs.
 
-ADR-0001 through ADR-0004 are complete and accepted. Distributed tracing (OpenTelemetry + Jaeger) is the one remaining item before Phase 2 formally closes.
+ADR-0001 through ADR-0005 are complete and accepted. Phase 2 is formally closed, with distributed tracing (OpenTelemetry + Jaeger) proven across the full saga.
 
 ---
 
@@ -255,7 +255,7 @@ The three problems Flux is actually built to solve well — everything else exis
 ### Phase 3 — Delivery & Routing
 - [ ] Multi-warehouse/dark-store model, nearest-stock + nearest-driver assignment
 - [ ] Live delivery tracking over WebSocket
-- [ ] ADR-0005: geospatial routing approach
+- [x] ADR-0005: geospatial routing approach (completed and accepted)
 
 ### Phase 4 — Presentation
 - [ ] Notification Service
@@ -282,7 +282,7 @@ Deliberately out of scope, so the project ships instead of sprawling:
 - [ADR-0002: Authentication strategy](docs/adr/0002-authentication-strategy.md)
 - [ADR-0003: Concurrency strategy for inventory reservation](docs/adr/0003-concurrency-approach.md)
 - [ADR-0004: Saga pattern — choreography vs orchestration](docs/adr/0004-saga-choreography.md)
-- ADR-0005: Geospatial routing approach *(pending)*
+- [ADR-0005: Geospatial routing approach](docs/adr/0005-geospatial-routing.md)
 
 ---
 
