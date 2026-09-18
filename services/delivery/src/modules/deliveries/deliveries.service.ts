@@ -56,7 +56,40 @@ const findNearestAvailableDriver = async (
 
 const AVERAGE_SPEED_KM_PER_HOUR = 25;
 
-const estimateArrival = (distanceKm: number):Date=>{
-    const hours = distanceKm / AVERAGE_SPEED_KM_PER_HOUR;
-    return new Date(Date.now() + hours * 60 * 60 * 1000);
-}
+const estimateArrival = (distanceKm: number): Date => {
+  const hours = distanceKm / AVERAGE_SPEED_KM_PER_HOUR;
+  return new Date(Date.now() + hours * 60 * 60 * 1000);
+};
+
+const assignDelivery = async (
+  orderId: string,
+  warehouseId: string,
+  warehouseLat: number,
+  warehouseLon: number,
+) => {
+  const { driver, distanceKm } = await findNearestAvailableDriver(
+    warehouseLat,
+    warehouseLon,
+  );
+
+  const estimatedArrival = estimateArrival(distanceKm);
+  const [delivery] = await db
+    .insert(deliveries)
+    .values({
+      orderId,
+      warehouseId,
+      driverId: driver.id,
+      status: "ASSIGNED",
+      estimatedArrival,
+    })
+    .returning();
+  if (!delivery) {
+    throw ApiError.internal("Failed to create delivery");
+  }
+
+  await db
+    .update(drivers)
+    .set({ status: "BUSY" })
+    .where(eq(drivers.id, driver.id));
+  return delivery;
+};
