@@ -1,5 +1,5 @@
 import { db } from "../../common/db/index.js";
-import { drivers, deliveries } from "../../common/db/schema.js";
+import { drivers, deliveries, warehouses } from "../../common/db/schema.js";
 import { eq, and } from "drizzle-orm";
 import ApiError from "../../common/utils/api-error.js";
 
@@ -110,9 +110,22 @@ const getDeliveryByOrderId = async (orderId: string) => {
   }
   return delivery;
 };
+const getWarehouseById = async (warehouseId: string) => {
+  const [warehouse] = await db
+    .select()
+    .from(warehouses)
+    .where(eq(warehouses.id, warehouseId));
+
+  if (!warehouse) {
+    throw ApiError.notFound("Warehouse not found");
+  }
+  return warehouse;
+};
+
 export {
   haversineDistanceKm,
   findNearestAvailableDriver,
   assignDelivery,
   getDeliveryByOrderId,
+  getWarehouseById,
 };
