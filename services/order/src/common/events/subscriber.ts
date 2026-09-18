@@ -1,5 +1,6 @@
 import { getChannel, EXCHANGE_NAME } from "./connection.js";
 import type { ConsumeMessage } from "amqplib";
+import { context, propagation } from "@opentelemetry/api";
 
 type EventHandler = (payload: Record<string, unknown>) => Promise<void>;
 
@@ -15,9 +16,14 @@ const subscribe = async (
   await channel.consume(queueName, async (msg: ConsumeMessage | null) => {
     if (!msg) return;
 
+    const extractedContext = propagation.extract(
+      context.active(),
+      msg.properties.headers ?? {},
+    );
+
     try {
       const payload = JSON.parse(msg.content.toString());
-      await handler(payload);
+      await context.with(extractedContext, () => handler(payload));
       channel.ack(msg);
     } catch (error) {
       console.error(
@@ -30,6 +36,7 @@ const subscribe = async (
           `[rabbitmq] giving up on message after 1 retry — queue="${queueName}" routingKey="${routingKey}"`,
         );
         channel.nack(msg, false, false);
+      } else {
         channel.nack(msg, false, true);
       }
     }
