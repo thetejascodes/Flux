@@ -5,22 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1789722609126,
-      "tag": "0000_dark_blue_marvel",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1789724204169,
-      "tag": "0001_curious_phalanx",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1789724270193,
-      "tag": "0002_low_gargoyle",
+      "when": 1789724939401,
+      "tag": "0000_volatile_kid_colt",
       "breakpoints": true
     }
   ]
