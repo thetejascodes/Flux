@@ -53,3 +53,10 @@ const findNearestAvailableDriver = async (
   }
   return { driver: nearest, distanceKm: nearestDistance };
 };
+
+const AVERAGE_SPEED_KM_PER_HOUR = 25;
+
+const estimateArrival = (distanceKm: number):Date=>{
+    const hours = distanceKm / AVERAGE_SPEED_KM_PER_HOUR;
+    return new Date(Date.now() + hours * 60 * 60 * 1000);
+}
