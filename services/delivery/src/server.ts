@@ -5,7 +5,7 @@ const port = config.port;
 
 const startServer = async () => {
   app.listen(port, () => {
-    console.log(`🚀 Order service running on port ${port}`);
+    console.log(`🚀 Deliveries service running on port ${port}`);
   });
 };
 
