@@ -248,7 +248,9 @@ The three problems Flux is actually built to solve well — everything else exis
 - [x] Compensating transaction proven under a genuine random payment failure: `PaymentFailed` → order `PAYMENT_FAILED` → `ReleaseReservation` → reservation confirmed `RELEASED` in Inventory's database
 - [x] ADR-0004: saga pattern — choreography vs orchestration (completed and accepted)
 - [x] Real Catalog-based pricing: Order looks up the live price at placement time; verified end-to-end against Payment's independently recorded amount
-- [ ] Distributed tracing (OpenTelemetry + Jaeger) across the full saga
+- [x] Distributed tracing (OpenTelemetry + Jaeger) across the full saga
+
+**Phase 2 completion record:** OpenTelemetry is enabled in Order, Inventory, and Payment with Node auto-instrumentation and OTLP HTTP export to Jaeger. RabbitMQ event subscribers extract and restore trace context, so the asynchronous `OrderCreated` → `InventoryReserved` → `ChargePayment` → `PaymentSucceeded` / `PaymentFailed` → `ReleaseReservation` flow can be followed as one distributed trace across the saga services. Phase 2 is now complete.
 
 ### Phase 3 — Delivery & Routing
 - [ ] Multi-warehouse/dark-store model, nearest-stock + nearest-driver assignment
