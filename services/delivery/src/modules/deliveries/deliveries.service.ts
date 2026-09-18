@@ -93,3 +93,14 @@ const assignDelivery = async (
     .where(eq(drivers.id, driver.id));
   return delivery;
 };
+
+const getDeliveryByOrderId = async (orderId: string) => {
+  const [delivery] = await db
+    .select()
+    .from(deliveries)
+    .where(eq(deliveries.orderId, orderId));
+  if (!delivery) {
+    throw ApiError.notFound("Delivery not found");
+  }
+  return delivery;
+};
