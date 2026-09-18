@@ -18,3 +18,13 @@ const initSocket = (httpServer: HttpServer): SocketIOServer => {
   console.log("[websocket] Socket.IO server ready");
   return io;
 };
+
+const broadcastDeliveryUpdate = (
+  orderId: string,
+  payload: Record<string, unknown>,
+): void => {
+  if (!io) {
+    return;
+  }
+  io.to(`order:${orderId}`).emit("delivery:update", payload);
+};
