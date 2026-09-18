@@ -5,6 +5,7 @@ import config from "./common/config/index.js";
 import { connectRabbitMQ } from "./common/events/connection.js";
 import { registerDeliverySagaHandlers } from "./modules/deliveries/deliveries.gateway.js";
 import { initSocket } from "./common/websocket/websocket.js";
+import startTrackingSimulation from "./modules/deliveries/deliveries.tracking.js";
 const port = config.port;
 
 const startServer = async () => {
@@ -13,6 +14,7 @@ const startServer = async () => {
 
   const httpServer = createServer(app);
   initSocket(httpServer);
+  startTrackingSimulation();
   httpServer.listen(port, () => {
     console.log(`🚀 Deliveries service running on port ${port}`);
   });
