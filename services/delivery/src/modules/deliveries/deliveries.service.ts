@@ -2,24 +2,7 @@ import { db } from "../../common/db/index.js";
 import { drivers, deliveries, warehouses } from "../../common/db/schema.js";
 import { eq, and } from "drizzle-orm";
 import ApiError from "../../common/utils/api-error.js";
-
-const haversineDistanceKm = (
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number,
-): number => {
-  const R = 6371;
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.asin(Math.sqrt(a));
-};
+import haversineDistanceKm from "./geo.js";
 
 const findNearestAvailableDriver = async (
   pickupLat: number,
