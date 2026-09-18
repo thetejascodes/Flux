@@ -104,3 +104,9 @@ const getDeliveryByOrderId = async (orderId: string) => {
   }
   return delivery;
 };
+export {
+  haversineDistanceKm,
+  findNearestAvailableDriver,
+  assignDelivery,
+  getDeliveryByOrderId,
+};
