@@ -6,7 +6,7 @@ import haversineDistanceKm from "./geo.js";
 
 const TICK_INTERVAL_MS = 5 * 1000;
 const ARRIVAL_THRESHOLD_KM = 0.05;
-const STEP_FRACTION = 0.15;
+const STEP_FRACTION = 0.05; // 5% per tick instead of 15%
 
 const stepToward = (
   fromLat: number,
@@ -92,6 +92,9 @@ const tick = async () => {
       longitude: next.lon,
       remainingKm: Number(remainingKm.toFixed(2)),
     });
+    console.log(
+      `[tracking] delivery ${delivery.id}: ${remainingKm.toFixed(2)}km remaining, driver now at (${next.lat.toFixed(4)}, ${next.lon.toFixed(4)})`,
+    );
   }
 };
 
