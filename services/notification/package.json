@@ -2,11 +2,11 @@
   "name": "notification",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
-    "dev": "tsc-watch --onSuccess \"node dist/server.js\"",
+    "dev": "tsc-watch --onSuccess \"node --import ./dist/common/tracing.js dist/server.js\"",
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "node --import ./dist/common/tracing.js dist/server.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio"
