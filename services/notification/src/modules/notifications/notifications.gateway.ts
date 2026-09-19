@@ -54,3 +54,4 @@ const registerNotificationSagaHandlers = async () => {
   );
   console.log("[notification-saga] all event handlers registered");
 };
+export { registerNotificationSagaHandlers };
