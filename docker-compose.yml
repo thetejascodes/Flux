@@ -142,14 +142,14 @@ services:
       rabbitmq:
         condition: service_healthy
 
-  # notification:
-  #   build: ./services/notification
-  #   restart: unless-stopped
-  #   env_file:
-  #     - ./services/notification/.env
-  #   depends_on:
-  #     rabbitmq:
-  #       condition: service_healthy
+  notification:
+    build: ./services/notification
+    restart: unless-stopped
+    env_file:
+      - ./services/notification/.env.docker
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
 
 volumes:
   pgdata:
