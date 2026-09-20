@@ -253,3 +253,4 @@ Each service has two env files: `.env` (uses `localhost`, for local tooling) and
 ---
 
 *A masterpiece isn't the one with the most features. It's the one where every piece exists on purpose.*
+
