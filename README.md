@@ -54,7 +54,7 @@ Running alongside all of this, entirely passively: **Notification** hears `Order
 
 On payment failure: Order publishes `ReleaseReservation` instead, and Inventory releases the held stock — confirmed via direct database query, independently, more than once.
 
-See [ADR-0004](docs/adr/0004-saga-choreography.md) for the choreography-vs-orchestration reasoning, and [ADR-0005](docs/adr/0005-geospatial-routing-approach.md) for the geospatial routing decision.
+See [ADR-0004](docs/adr/0004-saga-choreography.md) for the choreography-vs-orchestration reasoning, and [ADR-0005](docs/adr/0005-geospatial-routing.md) for the geospatial routing decision.
 
 ---
 
@@ -217,7 +217,7 @@ Each service has two env files: `.env` (uses `localhost`, for local tooling) and
 - [x] Warehouse/driver/delivery model
 - [x] Nearest-available-driver assignment via Haversine, atomically claimed
 - [x] Live delivery tracking over WebSocket, backed by a real simulation job
-- [x] [ADR-0005](docs/adr/0005-geospatial-routing-approach.md) accepted
+- [x] [ADR-0005](docs/adr/0005-geospatial-routing.md) accepted
 
 ### Phase 4 — Presentation
 - [x] Notification Service — event-driven, idempotent, Twilio-ready (stubbed pending phone lookup)
@@ -248,7 +248,7 @@ Each service has two env files: `.env` (uses `localhost`, for local tooling) and
 - [ADR-0002: Authentication strategy](docs/adr/0002-authentication-strategy.md)
 - [ADR-0003: Concurrency strategy for inventory reservation](docs/adr/0003-concurrency-approach.md)
 - [ADR-0004: Saga pattern — choreography vs orchestration](docs/adr/0004-saga-choreography.md)
-- [ADR-0005: Geospatial routing approach](docs/adr/0005-geospatial-routing-approach.md)
+- [ADR-0005: Geospatial routing approach](docs/adr/0005-geospatial-routing.md)
 
 ---
 
