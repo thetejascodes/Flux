@@ -35,7 +35,7 @@ const notify = async (
 ): Promise<void> => {
   try {
     await db.insert(notifications).values({ orderId, type, message });
-    send(phone,message);
+    send(phone, message);
   } catch (error: any) {
     if (error.code === "23505") {
       console.log(
