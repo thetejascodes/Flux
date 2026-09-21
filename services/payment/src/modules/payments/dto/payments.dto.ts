@@ -5,6 +5,7 @@ class ChargePaymentDto extends BaseDto {
   static schema = z.object({
     orderId: z.string().uuid(),
     amount: z.union([z.string(), z.number()]).transform((val) => String(val)),
+    idempotencyKey: z.string().uuid(),
   });
 }
 
