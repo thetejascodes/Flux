@@ -56,33 +56,36 @@ const assignDelivery = async (
   );
 
   const estimatedArrival = estimateArrival(distanceKm);
-  const claimed = await db
-    .update(drivers)
-    .set({ status: "BUSY" })
-    .where(and(eq(drivers.id, driver.id), eq(drivers.status, "AVAILABLE")))
-    .returning();
 
-  if (claimed.length === 0) {
-    throw ApiError.conflict("Driver was claimed by another delivery — retry");
-  }
+  return db.transaction(async (tx) => {
+    const claimed = await tx
+      .update(drivers)
+      .set({ status: "BUSY" })
+      .where(and(eq(drivers.id, driver.id), eq(drivers.status, "AVAILABLE")))
+      .returning();
 
-  const [delivery] = await db
-    .insert(deliveries)
-    .values({
-      orderId,
-      warehouseId,
-      driverId: driver.id,
-      status: "ASSIGNED",
-      estimatedArrival,
-    })
-    .returning();
-  if (!delivery) {
-    throw ApiError.internal("Failed to create delivery");
-  }
+    if (claimed.length === 0) {
+      throw ApiError.conflict("Driver was claimed by another delivery — retry");
+    }
 
-  return delivery;
+    const [delivery] = await tx
+      .insert(deliveries)
+      .values({
+        orderId,
+        warehouseId,
+        driverId: driver.id,
+        status: "ASSIGNED",
+        estimatedArrival,
+      })
+      .returning();
+
+    if (!delivery) {
+      throw ApiError.internal("Failed to create delivery");
+    }
+
+    return delivery;
+  });
 };
-
 const getDeliveryByOrderId = async (orderId: string) => {
   const [delivery] = await db
     .select()
