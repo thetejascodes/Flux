@@ -9,8 +9,7 @@ const simulateCharge = (amount: string): boolean => {
 };
 
 const chargePayment = async (input: ChargePaymentInput) => {
-  const { orderId, amount } = input;
-  const idempotencyKey = orderId;
+  const { orderId, amount, idempotencyKey } = input;
   const succeeded = simulateCharge(amount);
   try {
     const [payment] = await db
@@ -28,7 +27,8 @@ const chargePayment = async (input: ChargePaymentInput) => {
     }
     return payment;
   } catch (error: any) {
-    if (error.code === "23505") {
+    const pgCode = error.code ?? error.cause?.code;
+    if (pgCode === "23505") {
       const [existing] = await db
         .select()
         .from(payments)
@@ -36,8 +36,8 @@ const chargePayment = async (input: ChargePaymentInput) => {
       if (existing) {
         return existing;
       }
-      throw error;
     }
+    throw error;
   }
 };
 
