@@ -12,7 +12,7 @@ Most portfolio e-commerce projects are a product table, a cart, and a checkout f
 
 **Notification Service is the latest addition.** It listens to the same RabbitMQ exchange every other service publishes to — `OrderCreated`, `PaymentSucceeded`, `PaymentFailed`, `DeliveryAssigned` — and logs a customer-facing alert for each, idempotently (a unique constraint on `orderId` + notification type prevents duplicate alerts if an event is redelivered). It currently runs in stub mode (console + database log, same pattern as Gateway's own OTP stub mode) rather than sending real SMS; the Twilio integration itself is fully wired and ready, gated behind a single config flag, waiting only on a phone-number-resolution step that hasn't been built yet.
 
-ADR-0001 through ADR-0005 are complete and accepted. **Phases 0 through 3 are fully closed.** A frontend dashboard, automated tests, a case study write-up, and deployment are the remaining work.
+ADR-0001 through ADR-0005 are complete and accepted. **Phases 0 through 3 are fully closed.** A frontend dashboard, a case study write-up, and deployment are the remaining work.
 
 ---
 
@@ -25,6 +25,7 @@ ADR-0001 through ADR-0005 are complete and accepted. **Phases 0 through 3 are fu
 - [Authentication](#authentication)
 - [Tech Stack](#tech-stack)
 - [Quick Start](#quick-start)
+- [Testing](#testing)
 - [Core Hard Problems](#core-hard-problems)
 - [Roadmap](#roadmap)
 - [Non-Goals (for v1)](#non-goals-for-v1)
@@ -93,6 +94,7 @@ services/<name>/
         ├── <feature>.controller.ts   # HTTP-facing services only
         ├── <feature>.service.ts
         ├── <feature>.gateway.ts      # saga event subscribers/publishers
+        ├── <feature>.service.test.ts # Vitest suite, co-located with the service it covers
         └── dto/
 ```
 
@@ -110,7 +112,7 @@ Delivery additionally has `common/websocket/websocket.ts` (a thin Socket.IO wrap
 | **Catalog** | ✅ Complete | Products: create, get, list (filtered/paginated), update |
 | **Inventory** | ✅ Complete | Per-location stock, concurrency-safe reservations with timeout, background expiry job |
 | **Order** | ✅ Complete | Order lifecycle, real Catalog pricing, drives the saga through Inventory, Payment, and Delivery |
-| **Payment** | ✅ Complete | Simulated charge outcome, idempotent via unique constraint on orderId |
+| **Payment** | ✅ Complete | Simulated charge outcome, idempotent via unique constraint on `idempotencyKey` |
 | **Delivery** | ✅ Complete | Nearest-driver assignment (Haversine, atomically claimed), live position simulation, WebSocket broadcast per order |
 | **Notification** | ✅ Complete | Event-driven customer alerts on order lifecycle changes, idempotent per order+type, Twilio-ready but currently stubbed |
 
@@ -142,6 +144,7 @@ All three produce the same JWT (RS256, 15-minute expiry) + opaque refresh token 
 | **Auth** | JWT (RS256), bcrypt, Twilio, Google OAuth2 (raw HTTPS) | Multi-method authentication |
 | **Notifications** | Twilio (stubbed pending phone-lookup wiring) | Event-driven customer alerts |
 | **Validation** | Zod + BaseDto pattern | Schema-based DTO validation |
+| **Testing** | Vitest | Unit and integration tests, co-located per service |
 | **Dev Tooling** | Docker Compose, tsc-watch | Local multi-service infrastructure |
 
 ---
@@ -186,6 +189,29 @@ Each service has two env files: `.env` (uses `localhost`, for local tooling) and
 
 ---
 
+## Testing
+
+Each service that owns non-trivial logic carries a Vitest suite, co-located next to the code it covers (`<feature>.service.test.ts`), run per-service with:
+
+```bash
+cd services/<name>
+npm test
+```
+
+**Inventory** — concurrency safety is proven with a real 100-concurrent-request test against 1 unit of stock: exactly 1 reservation succeeds, 99 are cleanly rejected with a conflict, and none of the 99 fail for an unrelated reason. The same scenario is also exercised as a standalone load-test script (`scripts/load-test-reservation.ts`) that hits a running instance directly over HTTP, independent of the Vitest suite, so the guarantee is checked both at the unit level and against the real running service.
+
+**Payment** — idempotency is proven with three cases: the same `idempotencyKey` called twice returns the same payment row and the same outcome rather than re-rolling a fresh charge result, while a different `idempotencyKey` against the same `orderId` correctly creates a second, independent payment row — confirming the unique constraint is scoped to the key, not the order, so a legitimate retry after a failed attempt isn't blocked.
+
+Run every service's suite from the repo root with:
+
+```bash
+for d in services/*/; do (cd "$d" && npm test); done
+```
+
+(PowerShell equivalent: `Get-ChildItem services -Directory | ForEach-Object { npm test --prefix $_.FullName }`)
+
+---
+
 ## Core Hard Problems
 
 1. **Zero overselling under concurrency** — proven under a real load test: 100 concurrent requests against 1 unit of stock, exactly 1 success. A background job auto-releases abandoned reservations, also proven live. *(Inventory — complete.)*
@@ -202,7 +228,7 @@ Each service has two env files: `.env` (uses `localhost`, for local tooling) and
 - [x] Catalog service, tested through Gateway's proxy
 
 ### Phase 1 — Inventory & Concurrency
-- [x] Atomic reservation with timeout, proven zero-oversell under 100 concurrent requests
+- [x] Atomic reservation with timeout, proven zero-oversell under 100 concurrent requests (Vitest + standalone load test)
 - [x] Background expiry job, verified live
 - [x] [ADR-0003](docs/adr/0003-concurrency-approach.md) accepted
 
@@ -210,6 +236,7 @@ Each service has two env files: `.env` (uses `localhost`, for local tooling) and
 - [x] Order and Payment services built
 - [x] Success and compensation paths proven live, multiple times
 - [x] Real Catalog-based pricing, verified end-to-end
+- [x] Payment idempotency proven under Vitest (same key → same outcome; different key → independent charge)
 - [x] Distributed tracing across the full saga, verified as one connected trace
 - [x] [ADR-0004](docs/adr/0004-saga-choreography.md) accepted
 
@@ -225,7 +252,7 @@ Each service has two env files: `.env` (uses `localhost`, for local tooling) and
 - [ ] Case study write-up
 
 ### Phase 5 — Deployment
-- [ ] Automated tests, at least a handful per service
+- [ ] Expand automated coverage to Order, Delivery, and Notification (currently strongest on Inventory and Payment)
 - [ ] Managed infra swap (Neon, Upstash, CloudAMQP)
 - [ ] Production env vars, CI/CD per service
 - [ ] Post-deploy verification of the full saga in production
@@ -253,4 +280,3 @@ Each service has two env files: `.env` (uses `localhost`, for local tooling) and
 ---
 
 *A masterpiece isn't the one with the most features. It's the one where every piece exists on purpose.*
-
