@@ -1,57 +1,38 @@
 import { subscribe } from "../../common/events/subscriber.js";
 import { notify } from "./notifications.service.js";
 
+const handleOrderCreated = async (payload: unknown) => {
+  const { orderId } = payload as { orderId: string };
+  await notify(orderId, "ORDER_CREATED", `Your order ${orderId} has been placed.`);
+};
+
+const handlePaymentSucceeded = async (payload: unknown) => {
+  const { orderId } = payload as { orderId: string };
+  await notify(orderId, "PAYMENT_SUCCEEDED", `Payment confirmed for order ${orderId}.`);
+};
+
+const handlePaymentFailed = async (payload: unknown) => {
+  const { orderId } = payload as { orderId: string };
+  await notify(orderId, "PAYMENT_FAILED", `Payment failed for order ${orderId}. Please try again.`);
+};
+
+const handleDeliveryAssigned = async (payload: unknown) => {
+  const { orderId } = payload as { orderId: string };
+  await notify(orderId, "DELIVERY_ASSIGNED", `A driver has been assigned to order ${orderId}. It's on its way.`);
+};
+
 const registerNotificationSagaHandlers = async () => {
-  await subscribe(
-    "notification.order-created",
-    "OrderCreated",
-    async (payload) => {
-      const { orderId } = payload as { orderId: string };
-      await notify(
-        orderId,
-        "ORDER_CREATED",
-        `Your order ${orderId} has been placed.`,
-      );
-    },
-  );
-  await subscribe(
-    "notification.payment-succeeded",
-    "PaymentSucceeded",
-    async (payload) => {
-      const { orderId } = payload as { orderId: string };
-      await notify(
-        orderId,
-        "PAYMENT_SUCCEEDED",
-        `Payment confirmed for order ${orderId}.`,
-      );
-    },
-  );
-
-  await subscribe(
-    "notification.payment-failed",
-    "PaymentFailed",
-    async (payload) => {
-      const { orderId } = payload as { orderId: string };
-      await notify(
-        orderId,
-        "PAYMENT_FAILED",
-        `Payment failed for order ${orderId}. Please try again.`,
-      );
-    },
-  );
-
-  await subscribe(
-    "notification.delivery-assigned",
-    "DeliveryAssigned",
-    async (payload) => {
-      const { orderId } = payload as { orderId: string };
-      await notify(
-        orderId,
-        "DELIVERY_ASSIGNED",
-        `A driver has been assigned to order ${orderId}. It's on its way.`,
-      );
-    },
-  );
+  await subscribe("notification.order-created", "OrderCreated", handleOrderCreated);
+  await subscribe("notification.payment-succeeded", "PaymentSucceeded", handlePaymentSucceeded);
+  await subscribe("notification.payment-failed", "PaymentFailed", handlePaymentFailed);
+  await subscribe("notification.delivery-assigned", "DeliveryAssigned", handleDeliveryAssigned);
   console.log("[notification-saga] all event handlers registered");
 };
-export { registerNotificationSagaHandlers };
+
+export {
+  registerNotificationSagaHandlers,
+  handleOrderCreated,
+  handlePaymentSucceeded,
+  handlePaymentFailed,
+  handleDeliveryAssigned,
+};
