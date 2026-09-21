@@ -18,6 +18,7 @@ const registerOrderSagaHandlers = async () => {
       await publish("ChargePayment", {
         orderId,
         amount: order.totalAmount,
+        idempotencyKey: orderId,
       });
     },
   );
