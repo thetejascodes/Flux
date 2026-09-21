@@ -16,12 +16,19 @@ interface CatalogProductResponse {
 }
 
 const getProductPrice = async (productId: string): Promise<number> => {
-  const response = await fetch(
-    `${config.services.catalogUrl}/products/${productId}`,
-  );
+  let response: Response;
+  try {
+    response = await fetch(
+      `${config.services.catalogUrl}/products/${productId}`,
+    );
+  } catch {
+    throw ApiError.internal("Catalog service is unreachable");
+  }
+
   if (!response.ok) {
     throw ApiError.badRequest("Product not found in catalog");
   }
+
   const body = (await response.json()) as CatalogProductResponse;
   return parseFloat(body.data.price);
 };
@@ -29,7 +36,7 @@ const getProductPrice = async (productId: string): Promise<number> => {
 const placeOrder = async (userId: string, input: PlaceOrderInput) => {
   const { productId, warehouseId, quantity } = input;
   const unitPrice = await getProductPrice(productId);
-  const totalAmount = (unitPrice * quantity).toFixed();
+  const totalAmount = (unitPrice * quantity).toFixed(2);
 
   const [order] = await db
     .insert(orders)
@@ -42,6 +49,7 @@ const placeOrder = async (userId: string, input: PlaceOrderInput) => {
       status: "PENDING",
     })
     .returning();
+
   if (!order) {
     throw ApiError.internal("Failed to create order");
   }
@@ -52,6 +60,7 @@ const placeOrder = async (userId: string, input: PlaceOrderInput) => {
     warehouseId,
     quantity,
   });
+
   return order;
 };
 
@@ -79,5 +88,4 @@ const updateOrderStatus = async (
   return order;
 };
 
-export { placeOrder, getOrderById, updateOrderStatus,getProductPrice };
-
+export { placeOrder, getOrderById, updateOrderStatus, getProductPrice };
