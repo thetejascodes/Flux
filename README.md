@@ -202,6 +202,12 @@ npm test
 
 **Payment** — idempotency is proven with three cases: the same `idempotencyKey` called twice returns the same payment row and the same outcome rather than re-rolling a fresh charge result, while a different `idempotencyKey` against the same `orderId` correctly creates a second, independent payment row — confirming the unique constraint is scoped to the key, not the order, so a legitimate retry after a failed attempt isn't blocked.
 
+**Order** — pricing is tested against a mocked Catalog response, catching a real rounding bug where `.toFixed()` with no argument silently collapsed `99.98` to `100`; a Catalog-unreachable case confirms a clean error instead of an unhandled network exception; and the `InventoryReserved` saga handler is tested as an actually-imported, directly-called function (not a re-statement of its own inputs), confirming it correctly derives its idempotency key from the reservation, not the order, so a genuine retry after a released reservation isn't blocked.
+
+**Delivery** — the same concurrency pattern as Inventory is applied to driver assignment: 10 concurrent requests against 1 available driver yield exactly 1 success. A second test specifically proves the transaction boundary works — if the delivery record fails to insert after a driver is claimed, the claim itself rolls back, leaving the driver `AVAILABLE` rather than permanently stranded as `BUSY`. A third test seeds two drivers at different distances and confirms the nearer one is actually selected, not just the first one found.
+
+**Notification** — idempotency is backed by a database-level unique constraint on `(orderId, type)`, confirmed both for repeated calls to the same event type and for a genuine redelivery of the same `PaymentSucceeded` event; a separate case confirms different notification types for the same order are correctly treated as independent, non-duplicate rows.
+
 Run every service's suite from the repo root with:
 
 ```bash
@@ -209,6 +215,8 @@ for d in services/*/; do (cd "$d" && npm test); done
 ```
 
 (PowerShell equivalent: `Get-ChildItem services -Directory | ForEach-Object { npm test --prefix $_.FullName }`)
+
+**Known gaps, being tracked rather than hidden:** Order's `InventoryReservationFailed`, `PaymentSucceeded`, and `PaymentFailed` saga handlers are written but not yet individually tested — only `InventoryReserved` has coverage so far. Payment's own event handler (`handleChargePayment`) has a couple of identified but unapplied fixes: a validation failure currently logs and silently drops the event rather than publishing a compensating `PaymentFailed`, and the handler doesn't yet catch a thrown error from `chargePayment` itself. Neither gap has caused an observed failure, but both represent a path where a stuck order could go unnoticed rather than being compensated.
 
 ---
 
@@ -235,8 +243,10 @@ for d in services/*/; do (cd "$d" && npm test); done
 ### Phase 2 — Order Saga
 - [x] Order and Payment services built
 - [x] Success and compensation paths proven live, multiple times
-- [x] Real Catalog-based pricing, verified end-to-end
+- [x] Real Catalog-based pricing, verified end-to-end (including a caught-and-fixed rounding bug)
 - [x] Payment idempotency proven under Vitest (same key → same outcome; different key → independent charge)
+- [ ] Full test coverage across all four Order saga handlers (currently 1 of 4)
+- [ ] Payment's inbound event handler hardened against silently-dropped validation failures
 - [x] Distributed tracing across the full saga, verified as one connected trace
 - [x] [ADR-0004](docs/adr/0004-saga-choreography.md) accepted
 
@@ -252,7 +262,7 @@ for d in services/*/; do (cd "$d" && npm test); done
 - [ ] Case study write-up
 
 ### Phase 5 — Deployment
-- [ ] Expand automated coverage to Order, Delivery, and Notification (currently strongest on Inventory and Payment)
+- [ ] Close the two known Order/Payment saga-handler gaps above
 - [ ] Managed infra swap (Neon, Upstash, CloudAMQP)
 - [ ] Production env vars, CI/CD per service
 - [ ] Post-deploy verification of the full saga in production
