@@ -37,7 +37,8 @@ const notify = async (
     await db.insert(notifications).values({ orderId, type, message });
     await send(phone, message);
   } catch (error: any) {
-    if (error.code === "23505") {
+    const pgCode = error.code ?? error.cause?.code;
+    if (pgCode === "23505") {
       console.log(
         `[notification] skipped duplicate ${type} for order ${orderId}`,
       );
