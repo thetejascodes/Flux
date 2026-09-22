@@ -10,8 +10,7 @@
     "test": "vitest run",
     "db:migrate": "drizzle-kit migrate",
     "db:generate": "drizzle-kit generate",
-    "db:studio": "drizzle-kit studio",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "db:studio": "drizzle-kit studio"
   },
   "keywords": [],
   "author": "",
