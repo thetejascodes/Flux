@@ -102,6 +102,8 @@ services/<name>/
 
 Delivery additionally has `common/websocket/websocket.ts` (a thin Socket.IO wrapper with per-order rooms) and `modules/deliveries/deliveries.tracking.ts` (the periodic simulation that moves an assigned driver toward the destination and broadcasts progress). Notification and Payment are both purely event-driven, with no HTTP routes at all beyond an internal `/health`.
 
+Gateway's auth module is the one deliberate exception to the "one `.service.test.ts` per feature" convention above: its OTP flow splits `otp.service.ts` (rate-limiting, verification, session issuance) from `otp.ts` (the thin Twilio wrapper), each with its own dedicated suite — `otp.service.test.ts` and `otp.test.ts` — since mocking the Twilio call inside the service tests would leave the wrapper itself unverified.
+
 ---
 
 ## Services & Build Status
@@ -123,10 +125,10 @@ Delivery additionally has `common/websocket/websocket.ts` (a thin Socket.IO wrap
 Gateway does **not** use full OpenID Connect — that's the right tool for an external identity provider serving multiple third-party clients, not a single product's internal services. Instead, Gateway supports three login methods, all converging on one shared token-issuing function:
 
 - **Email/password** — bcrypt-hashed, standard signup/login
-- **OTP (phone)** — Twilio-backed, rate-limited (3/hour), row-locked verification to prevent replay
+- **OTP (phone)** — Twilio-backed, rate-limited (3/hour, scoped per phone number), row-locked verification to prevent replay
 - **Google OAuth** — implemented via direct HTTPS calls to Google's endpoints, no SDK
 
-All three produce the same JWT (RS256, 15-minute expiry) + opaque refresh token pair. Refresh tokens are random values, hashed and stored server-side in a `sessions` table, and rotate on every use — so they can be revoked instantly, unlike a signed refresh JWT. The Gateway validates every incoming request's token before proxying it to a downstream service, and forwards the verified user's ID via an `x-user-id` header — services trust this header rather than re-authenticating every call. See [ADR-0002](docs/adr/0002-authentication-strategy.md) for the full reasoning.
+All three produce the same JWT (RS256, 15-minute expiry) + opaque refresh token pair. Refresh tokens are random values, hashed and stored server-side in a `sessions` table, and rotate on every use — so they can be revoked instantly, unlike a signed refresh JWT. The Gateway validates every incoming request's token before proxying it to a downstream service, and forwards the verified user's ID via an `x-user-id` header — services trust this header rather than re-authenticating every call. All three login paths, plus refresh rotation, are covered by Vitest (see [Testing](#testing)). See [ADR-0002](docs/adr/0002-authentication-strategy.md) for the full reasoning.
 
 ---
 
@@ -198,9 +200,19 @@ cd services/<name>
 npm test
 ```
 
-**Inventory** — concurrency safety is proven with a real 100-concurrent-request test against 1 unit of stock: exactly 1 reservation succeeds, 99 are cleanly rejected with a conflict, and none of the 99 fail for an unrelated reason. The same scenario is also exercised as a standalone load-test script (`scripts/load-test-reservation.ts`) that hits a running instance directly over HTTP, independent of the Vitest suite, so the guarantee is checked both at the unit level and against the real running service.
+| Service | Suites | Focus |
+| --- | --- | --- |
+| **Gateway** | 4 | Email/password, OTP, Google OAuth, shared token issuance |
+| **Inventory** | 1 | Zero-oversell concurrency, background expiry job |
+| **Payment** | 1 | Idempotency, scoped by key vs. by order |
+| **Order** | 1 | Real-pricing derivation, saga handler correctness |
+| **Delivery** | 1 | Concurrent claim, transaction rollback, nearest-driver selection |
+| **Notification** | 1 | Idempotency per order + notification type |
+| **Catalog** | — | Not yet started |
 
-**Gateway** — authentication coverage verifies signup creates the user and email identity, duplicate emails are rejected, password login returns both tokens and rejects invalid credentials consistently, refresh rotates and invalidates the previous token, unknown refresh tokens are rejected, and sessions receive the expected expiry.
+**Gateway** — the most thoroughly covered service, with four suites spanning all three login methods and the shared token machinery: `auth.service.test.ts` (email/password + refresh — signup creates the user and email identity, duplicate emails are rejected, login returns both tokens and rejects bad credentials with the *same* message as an unknown email to prevent account enumeration, refresh rotates and invalidates the previous token, and sessions receive the expected ~7-day expiry); `otp.service.test.ts` (rate-limiting at 3/hour scoped per phone number rather than globally, codes stored only as a hash — never in plaintext, new-user creation vs. existing-user reuse across repeat logins, and rejection of wrong, expired, already-consumed, and never-requested codes); `google-auth.service.test.ts` (the authorization URL's params, both of Google's HTTP calls succeeding and failing correctly, new-user creation vs. existing-identity reuse on repeat login, and that a failed token exchange or profile fetch never leaves a stray user row behind); and `otp.test.ts` (the Twilio wrapper in isolation — stub mode logs to console and skips Twilio entirely, live mode sends the exact expected payload, and a Twilio-side failure propagates instead of being silently swallowed).
+
+**Inventory** — concurrency safety is proven with a real 100-concurrent-request test against 1 unit of stock: exactly 1 reservation succeeds, 99 are cleanly rejected with a conflict, and none of the 99 fail for an unrelated reason. The same scenario is also exercised as a standalone load-test script (`scripts/load-test-reservation.ts`) that hits a running instance directly over HTTP, independent of the Vitest suite, so the guarantee is checked both at the unit level and against the real running service.
 
 **Payment** — idempotency is proven with three cases: the same `idempotencyKey` called twice returns the same payment row and the same outcome rather than re-rolling a fresh charge result, while a different `idempotencyKey` against the same `orderId` correctly creates a second, independent payment row — confirming the unique constraint is scoped to the key, not the order, so a legitimate retry after a failed attempt isn't blocked.
 
@@ -218,7 +230,11 @@ for d in services/*/; do (cd "$d" && npm test); done
 
 (PowerShell equivalent: `Get-ChildItem services -Directory | ForEach-Object { npm test --prefix $_.FullName }`)
 
-**Known gaps, being tracked rather than hidden:** Order's `InventoryReservationFailed`, `PaymentSucceeded`, and `PaymentFailed` saga handlers are written but not yet individually tested — only `InventoryReserved` has coverage so far. Payment's own event handler (`handleChargePayment`) has a couple of identified but unapplied fixes: a validation failure currently logs and silently drops the event rather than publishing a compensating `PaymentFailed`, and the handler doesn't yet catch a thrown error from `chargePayment` itself. Neither gap has caused an observed failure, but both represent a path where a stuck order could go unnoticed rather than being compensated.
+**Known gaps, being tracked rather than hidden:**
+- Order's `InventoryReservationFailed`, `PaymentSucceeded`, and `PaymentFailed` saga handlers are written but not yet individually tested — only `InventoryReserved` has coverage so far.
+- Payment's own event handler (`handleChargePayment`) has a couple of identified but unapplied fixes: a validation failure currently logs and silently drops the event rather than publishing a compensating `PaymentFailed`, and the handler doesn't yet catch a thrown error from `chargePayment` itself. Neither gap has caused an observed failure, but both represent a path where a stuck order could go unnoticed rather than being compensated.
+- Catalog has no test suite yet — it's functionally complete and exercised indirectly through Order's pricing tests and manual end-to-end runs, but has no dedicated Vitest coverage of its own.
+- Gateway's `auth.middleware.ts` (token validation on the proxy path) is likewise untested so far.
 
 ---
 
@@ -260,6 +276,8 @@ for d in services/*/; do (cd "$d" && npm test); done
 
 ### Phase 4 — Presentation
 - [x] Notification Service — event-driven, idempotent, Twilio-ready (stubbed pending phone lookup)
+- [x] Gateway auth test suite completed across all three login methods (email/password, OTP, Google OAuth) plus refresh rotation
+- [ ] Catalog test suite
 - [ ] Minimal dashboard showing live order flow and delivery tracking
 - [ ] Case study write-up
 
