@@ -1,6 +1,6 @@
 # Flux
 
-> *One order. Six services. Zero excuses.*
+> _One order. Six services. Zero excuses._
 
 Flux is a distributed quick-commerce platform built as a monorepo of independent services. The goal is to model the core problems behind modern order systems — inventory reservation under concurrency, service-to-service coordination, delivery routing, and failure recovery — without a single shared database.
 
@@ -108,14 +108,14 @@ Gateway's auth module is the one deliberate exception to the "one `.service.test
 
 ## Services & Build Status
 
-| Service | Status | Responsibility |
-| --- | --- | --- |
-| **Gateway** | ✅ Complete | Auth (email/password, OTP, Google), request routing, token validation |
-| **Catalog** | ✅ Complete | Products: create, get, list (filtered/paginated), update |
-| **Inventory** | ✅ Complete | Per-location stock, concurrency-safe reservations with timeout, background expiry job |
-| **Order** | ✅ Complete | Order lifecycle, real Catalog pricing, drives the saga through Inventory, Payment, and Delivery |
-| **Payment** | ✅ Complete | Simulated charge outcome, idempotent via unique constraint on `idempotencyKey` |
-| **Delivery** | ✅ Complete | Nearest-driver assignment (Haversine, atomically claimed), live position simulation, WebSocket broadcast per order |
+| Service          | Status      | Responsibility                                                                                                         |
+| ---------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **Gateway**      | ✅ Complete | Auth (email/password, OTP, Google), request routing, token validation                                                  |
+| **Catalog**      | ✅ Complete | Products: create, get, list (filtered/paginated), update                                                               |
+| **Inventory**    | ✅ Complete | Per-location stock, concurrency-safe reservations with timeout, background expiry job                                  |
+| **Order**        | ✅ Complete | Order lifecycle, real Catalog pricing, drives the saga through Inventory, Payment, and Delivery                        |
+| **Payment**      | ✅ Complete | Simulated charge outcome, idempotent via unique constraint on `idempotencyKey`                                         |
+| **Delivery**     | ✅ Complete | Nearest-driver assignment (Haversine, atomically claimed), live position simulation, WebSocket broadcast per order     |
 | **Notification** | ✅ Complete | Event-driven customer alerts on order lifecycle changes, idempotent per order+type, Twilio-ready but currently stubbed |
 
 ---
@@ -134,20 +134,20 @@ All three produce the same JWT (RS256, 15-minute expiry) + opaque refresh token 
 
 ## Tech Stack
 
-| Layer | Technology | Purpose |
-| --- | --- | --- |
-| **Language** | TypeScript (strict, ESM/nodenext) | Type-safe code across all services |
-| **Runtime** | Node.js 20, Express 5 | Per-service HTTP APIs |
-| **Database** | PostgreSQL (one per service), Drizzle ORM | Durable, service-owned data |
-| **Cache / Locking** | Valkey (Redis-compatible) | Stock reservation TTLs, distributed locks |
-| **Event Broker** | RabbitMQ (topic exchange, `flux.events`) | Async communication between services |
-| **Real-time** | Socket.IO | Live delivery position updates per order (room-scoped) |
-| **Tracing** | OpenTelemetry + Jaeger | End-to-end request tracing, manually propagated across RabbitMQ |
-| **Auth** | JWT (RS256), bcrypt, Twilio, Google OAuth2 (raw HTTPS) | Multi-method authentication |
-| **Notifications** | Twilio (stubbed pending phone-lookup wiring) | Event-driven customer alerts |
-| **Validation** | Zod + BaseDto pattern | Schema-based DTO validation |
-| **Testing** | Vitest | Unit and integration tests, co-located per service |
-| **Dev Tooling** | Docker Compose, tsc-watch | Local multi-service infrastructure |
+| Layer               | Technology                                             | Purpose                                                         |
+| ------------------- | ------------------------------------------------------ | --------------------------------------------------------------- |
+| **Language**        | TypeScript (strict, ESM/nodenext)                      | Type-safe code across all services                              |
+| **Runtime**         | Node.js 20, Express 5                                  | Per-service HTTP APIs                                           |
+| **Database**        | PostgreSQL (one per service), Drizzle ORM              | Durable, service-owned data                                     |
+| **Cache / Locking** | Valkey (Redis-compatible)                              | Stock reservation TTLs, distributed locks                       |
+| **Event Broker**    | RabbitMQ (topic exchange, `flux.events`)               | Async communication between services                            |
+| **Real-time**       | Socket.IO                                              | Live delivery position updates per order (room-scoped)          |
+| **Tracing**         | OpenTelemetry + Jaeger                                 | End-to-end request tracing, manually propagated across RabbitMQ |
+| **Auth**            | JWT (RS256), bcrypt, Twilio, Google OAuth2 (raw HTTPS) | Multi-method authentication                                     |
+| **Notifications**   | Twilio (stubbed pending phone-lookup wiring)           | Event-driven customer alerts                                    |
+| **Validation**      | Zod + BaseDto pattern                                  | Schema-based DTO validation                                     |
+| **Testing**         | Vitest                                                 | Unit and integration tests, co-located per service              |
+| **Dev Tooling**     | Docker Compose, tsc-watch                              | Local multi-service infrastructure                              |
 
 ---
 
@@ -200,23 +200,25 @@ cd services/<name>
 npm test
 ```
 
-| Service | Suites | Focus |
-| --- | --- | --- |
-| **Gateway** | 5 | Email/password, OTP, Google OAuth, shared token issuance, proxy-path token validation |
-| **Inventory** | 1 | Zero-oversell concurrency, background expiry job |
-| **Payment** | 1 | Idempotency, scoped by key vs. by order |
-| **Order** | 1 | Real-pricing derivation, saga handler correctness |
-| **Delivery** | 1 | Concurrent claim, transaction rollback, nearest-driver selection |
-| **Notification** | 1 | Idempotency per order + notification type |
-| **Catalog** | — | Not yet started |
+| Service          | Suites | Focus                                                                                 |
+| ---------------- | ------ | ------------------------------------------------------------------------------------- |
+| **Gateway**      | 5      | Email/password, OTP, Google OAuth, shared token issuance, proxy-path token validation |
+| **Inventory**    | 1      | Zero-oversell concurrency, background expiry job                                      |
+| **Payment**      | 1      | Idempotency, scoped by key vs. by order                                               |
+| **Order**        | 1      | Real-pricing derivation, saga handler correctness                                     |
+| **Delivery**     | 1      | Concurrent claim, transaction rollback, nearest-driver selection                      |
+| **Notification** | 1      | Idempotency per order + notification type                                             |
+| **Catalog**      | 1      | Product creation, lookup, filtering, pagination, updates, and price precision         |
 
-**Gateway** — the most thoroughly covered service, with five suites spanning all three login methods, the shared token machinery, and the request-facing side of auth: `auth.service.test.ts` (email/password + refresh — signup creates the user and email identity, duplicate emails are rejected, login returns both tokens and rejects bad credentials with the *same* message as an unknown email to prevent account enumeration, refresh rotates and invalidates the previous token, and sessions receive the expected ~7-day expiry); `otp.service.test.ts` (rate-limiting at 3/hour scoped per phone number rather than globally, codes stored only as a hash — never in plaintext, new-user creation vs. existing-user reuse across repeat logins, and rejection of wrong, expired, already-consumed, and never-requested codes); `google-auth.service.test.ts` (the authorization URL's params, both of Google's HTTP calls succeeding and failing correctly, new-user creation vs. existing-identity reuse on repeat login, and that a failed token exchange or profile fetch never leaves a stray user row behind); `otp.test.ts` (the Twilio wrapper in isolation — stub mode logs to console and skips Twilio entirely, live mode sends the exact expected payload, and a Twilio-side failure propagates instead of being silently swallowed); and `auth.middleware.test.ts` (the `isAuthenticated` proxy-path check itself — a valid token sets `req.userId` and calls through cleanly, a missing or malformed `Authorization` header is rejected with a 401 rather than crashing, and a thrown verification error, such as an expired token, is correctly forwarded to the error handler instead of swallowed).
+**Gateway** — the most thoroughly covered service, with five suites spanning all three login methods, the shared token machinery, and the request-facing side of auth: `auth.service.test.ts` (email/password + refresh — signup creates the user and email identity, duplicate emails are rejected, login returns both tokens and rejects bad credentials with the _same_ message as an unknown email to prevent account enumeration, refresh rotates and invalidates the previous token, and sessions receive the expected ~7-day expiry); `otp.service.test.ts` (rate-limiting at 3/hour scoped per phone number rather than globally, codes stored only as a hash — never in plaintext, new-user creation vs. existing-user reuse across repeat logins, and rejection of wrong, expired, already-consumed, and never-requested codes); `google-auth.service.test.ts` (the authorization URL's params, both of Google's HTTP calls succeeding and failing correctly, new-user creation vs. existing-identity reuse on repeat login, and that a failed token exchange or profile fetch never leaves a stray user row behind); `otp.test.ts` (the Twilio wrapper in isolation — stub mode logs to console and skips Twilio entirely, live mode sends the exact expected payload, and a Twilio-side failure propagates instead of being silently swallowed); and `auth.middleware.test.ts` (the `isAuthenticated` proxy-path check itself — a valid token sets `req.userId` and calls through cleanly, a missing or malformed `Authorization` header is rejected with a 401 rather than crashing, and a thrown verification error, such as an expired token, is correctly forwarded to the error handler instead of swallowed).
 
 **Inventory** — concurrency safety is proven with a real 100-concurrent-request test against 1 unit of stock: exactly 1 reservation succeeds, 99 are cleanly rejected with a conflict, and none of the 99 fail for an unrelated reason. The same scenario is also exercised as a standalone load-test script (`scripts/load-test-reservation.ts`) that hits a running instance directly over HTTP, independent of the Vitest suite, so the guarantee is checked both at the unit level and against the real running service.
 
 **Payment** — idempotency is proven with three cases: the same `idempotencyKey` called twice returns the same payment row and the same outcome rather than re-rolling a fresh charge result, while a different `idempotencyKey` against the same `orderId` correctly creates a second, independent payment row — confirming the unique constraint is scoped to the key, not the order, so a legitimate retry after a failed attempt isn't blocked.
 
 **Order** — pricing is tested against a mocked Catalog response, catching a real rounding bug where `.toFixed()` with no argument silently collapsed `99.98` to `100`; a Catalog-unreachable case confirms a clean error instead of an unhandled network exception; and the `InventoryReserved` saga handler is tested as an actually-imported, directly-called function (not a re-statement of its own inputs), confirming it correctly derives its idempotency key from the reservation, not the order, so a genuine retry after a released reservation isn't blocked.
+
+**Catalog** — the 12-test suite covers product creation with exact two-decimal price storage, lookup of existing and nonexistent products, unfiltered and category-filtered listing, pagination across multiple pages, empty filter results, partial updates that preserve unspecified fields, price updates without floating-point corruption, and not-found handling for updates.
 
 **Delivery** — the same concurrency pattern as Inventory is applied to driver assignment: 10 concurrent requests against 1 available driver yield exactly 1 success. A second test specifically proves the transaction boundary works — if the delivery record fails to insert after a driver is claimed, the claim itself rolls back, leaving the driver `AVAILABLE` rather than permanently stranded as `BUSY`. A third test seeds two drivers at different distances and confirms the nearer one is actually selected, not just the first one found.
 
@@ -231,33 +233,36 @@ for d in services/*/; do (cd "$d" && npm test); done
 (PowerShell equivalent: `Get-ChildItem services -Directory | ForEach-Object { npm test --prefix $_.FullName }`)
 
 **Known gaps, being tracked rather than hidden:**
+
 - Order's `InventoryReservationFailed`, `PaymentSucceeded`, and `PaymentFailed` saga handlers are written but not yet individually tested — only `InventoryReserved` has coverage so far.
 - Payment's own event handler (`handleChargePayment`) has a couple of identified but unapplied fixes: a validation failure currently logs and silently drops the event rather than publishing a compensating `PaymentFailed`, and the handler doesn't yet catch a thrown error from `chargePayment` itself. Neither gap has caused an observed failure, but both represent a path where a stuck order could go unnoticed rather than being compensated.
-- Catalog has no test suite yet — it's functionally complete and exercised indirectly through Order's pricing tests and manual end-to-end runs, but has no dedicated Vitest coverage of its own.
 
 ---
 
 ## Core Hard Problems
 
-1. **Zero overselling under concurrency** — proven under a real load test: 100 concurrent requests against 1 unit of stock, exactly 1 success. A background job auto-releases abandoned reservations, also proven live. *(Inventory — complete.)*
-2. **The order saga** — order placed, inventory reserved, payment charged, delivery assigned, customer notified. Both the success and compensation paths are proven live in Docker, with real pricing and real geospatial assignment throughout, and distributed tracing showing every hop as one connected trace. *(Order/Inventory/Payment/Delivery/Notification saga — complete.)*
-3. **Nearest-driver routing with live tracking** — the closest available driver to the shipping warehouse is selected using real Haversine distance calculation, claimed atomically to prevent double-booking under concurrent assignment, and their simulated movement is broadcast live to any client watching that order. Verified end-to-end with a continuous stream of position updates ending in a correct `DELIVERED` state. *(Delivery — complete.)*
+1. **Zero overselling under concurrency** — proven under a real load test: 100 concurrent requests against 1 unit of stock, exactly 1 success. A background job auto-releases abandoned reservations, also proven live. _(Inventory — complete.)_
+2. **The order saga** — order placed, inventory reserved, payment charged, delivery assigned, customer notified. Both the success and compensation paths are proven live in Docker, with real pricing and real geospatial assignment throughout, and distributed tracing showing every hop as one connected trace. _(Order/Inventory/Payment/Delivery/Notification saga — complete.)_
+3. **Nearest-driver routing with live tracking** — the closest available driver to the shipping warehouse is selected using real Haversine distance calculation, claimed atomically to prevent double-booking under concurrent assignment, and their simulated movement is broadcast live to any client watching that order. Verified end-to-end with a continuous stream of position updates ending in a correct `DELIVERED` state. _(Delivery — complete.)_
 
 ---
 
 ## Roadmap
 
 ### Phase 0 — Foundation
+
 - [x] Repo structure, Docker Compose infra
 - [x] Gateway with full 3-method authentication
 - [x] Catalog service, tested through Gateway's proxy
 
 ### Phase 1 — Inventory & Concurrency
+
 - [x] Atomic reservation with timeout, proven zero-oversell under 100 concurrent requests (Vitest + standalone load test)
 - [x] Background expiry job, verified live
 - [x] [ADR-0003](docs/adr/0003-concurrency-approach.md) accepted
 
 ### Phase 2 — Order Saga
+
 - [x] Order and Payment services built
 - [x] Success and compensation paths proven live, multiple times
 - [x] Real Catalog-based pricing, verified end-to-end (including a caught-and-fixed rounding bug)
@@ -268,19 +273,22 @@ for d in services/*/; do (cd "$d" && npm test); done
 - [x] [ADR-0004](docs/adr/0004-saga-choreography.md) accepted
 
 ### Phase 3 — Delivery & Routing
+
 - [x] Warehouse/driver/delivery model
 - [x] Nearest-available-driver assignment via Haversine, atomically claimed
 - [x] Live delivery tracking over WebSocket, backed by a real simulation job
 - [x] [ADR-0005](docs/adr/0005-geospatial-routing.md) accepted
 
 ### Phase 4 — Presentation
+
 - [x] Notification Service — event-driven, idempotent, Twilio-ready (stubbed pending phone lookup)
 - [x] Gateway test suite completed across all three login methods (email/password, OTP, Google OAuth), refresh rotation, and the proxy-path auth middleware
-- [ ] Catalog test suite
+- [x] Catalog test suite completed: 12 tests covering product creation, lookup, filtering, pagination, updates, and price precision
 - [ ] Minimal dashboard showing live order flow and delivery tracking
 - [ ] Case study write-up
 
 ### Phase 5 — Deployment
+
 - [ ] Close the two known Order/Payment saga-handler gaps above
 - [ ] Managed infra swap (Neon, Upstash, CloudAMQP)
 - [ ] Production env vars, CI/CD per service
@@ -308,4 +316,4 @@ for d in services/*/; do (cd "$d" && npm test); done
 
 ---
 
-*A masterpiece isn't the one with the most features. It's the one where every piece exists on purpose.*
+_A masterpiece isn't the one with the most features. It's the one where every piece exists on purpose._
