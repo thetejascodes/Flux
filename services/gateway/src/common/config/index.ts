@@ -16,7 +16,7 @@ const config = {
   database: {
     url: required("DATABASE_URL"),
   },
-
+  redisUrl: optional("REDIS_URL", "redis://localhost:6379"),
   jwt: {
     privateKey: Buffer.from(required("JWT_PRIVATE_KEY"), "base64").toString(
       "utf-8",
