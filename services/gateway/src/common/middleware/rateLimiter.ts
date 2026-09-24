@@ -39,3 +39,4 @@ const rateLimiter = (options: RateLimitOptions) => {
 };
 
 
+export default rateLimiter;
