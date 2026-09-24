@@ -7,6 +7,8 @@ let connection: ChannelModel | null = null;
 let chanel: Channel | null = null;
 
 const EXCHANGE_NAME = "flux.events";
+const DLX_EXCHANGE = "flux.events.dlx";
+const DLQ_NAME = "flux.events.dlq";
 
 const connectRabbitMQ = async (): Promise<Channel> => {
   if (chanel) {
@@ -24,6 +26,10 @@ const connectRabbitMQ = async (): Promise<Channel> => {
   });
   chanel = await connection.createChannel();
   await chanel.assertExchange(EXCHANGE_NAME, "topic", { durable: true });
+
+  await chanel.assertExchange(DLX_EXCHANGE, "topic", { durable: true });
+  await chanel.assertQueue(DLQ_NAME, { durable: true });
+  await chanel.bindQueue(DLQ_NAME, DLX_EXCHANGE, "#");
   console.log("[rabbitmq] connected and channel ready");
 
   return chanel;
@@ -50,4 +56,10 @@ const closeRabbitMQ = async (): Promise<void> => {
   }
 };
 
-export { connectRabbitMQ, getChannel, closeRabbitMQ, EXCHANGE_NAME };
+export {
+  connectRabbitMQ,
+  getChannel,
+  closeRabbitMQ,
+  EXCHANGE_NAME,
+  DLX_EXCHANGE,
+};
