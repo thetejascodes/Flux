@@ -43,8 +43,16 @@ const handleReleaseReservation = async (payload: unknown) => {
 };
 
 const registerInventorySagaHandlers = async () => {
-  await subscribe("inventory.order-created", "OrderCreated", handleOrderCreated);
-  await subscribe("inventory.release-reservation", "ReleaseReservation", handleReleaseReservation);
+  await subscribe(
+    "inventory.order-created",
+    "OrderCreated",
+    handleOrderCreated,
+  );
+  await subscribe(
+    "inventory.release-reservation",
+    "ReleaseReservation",
+    handleReleaseReservation,
+  );
   console.log("[inventory-saga] all event handlers registered");
 };
 
