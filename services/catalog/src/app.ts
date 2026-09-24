@@ -1,13 +1,28 @@
 import express from "express";
 import errorHandler from "./common/middlewares/errorHandler.js";
 import productRoutes from "./modules/products/products.routes.js";
+import { db } from "./common/db/index.js";
+import { sql } from "drizzle-orm";
+
 const app = express();
 
-app.get("/health", (req, res) => {
-  res.json({ status: "ok" });
+app.get("/health", async (req, res) => {
+  const checks: Record<string, "ok" | "down"> = {
+    database: "ok",
+  };
+  try {
+    await db.execute(sql`SELECT 1`);
+  } catch {
+    checks.database = "down";
+  }
+  const allOk = Object.values(checks).every((status) => status === "ok");
+  res.status(allOk ? 200 : 503).json({
+    status: allOk ? "ok" : "degraded",
+    checks,
+  });
 });
 
 app.use(express.json());
-app.use("/products",productRoutes);
+app.use("/products", productRoutes);
 app.use(errorHandler);
 export default app;
