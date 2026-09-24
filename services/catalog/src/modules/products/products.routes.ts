@@ -1,6 +1,7 @@
 import { Router } from "express";
 import * as productController from "./products.controllers.js";
 import validate, { validateQuery } from "../../common/middlewares/validate.js";
+import requireAdmin from "../../common/middlewares/requireAdmin.js";
 import {
   CreateProductDto,
   ListProductsQueryDto,
@@ -16,8 +17,17 @@ router.get(
 );
 
 router.get("/:id", productController.getProductById);
-router.post("/", validate(CreateProductDto), productController.createProduct);
-router.patch("/:id", validate(UpdateProductDto), productController.updateProduct);
+router.post(
+  "/",
+  requireAdmin,
+  validate(CreateProductDto),
+  productController.createProduct,
+);
+router.patch(
+  "/:id",
+  requireAdmin,
+  validate(UpdateProductDto),
+  productController.updateProduct,
+);
 
 export default router;
-
