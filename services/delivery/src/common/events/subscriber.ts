@@ -1,4 +1,4 @@
-import { getChannel, EXCHANGE_NAME } from "./connection.js";
+import { getChannel, EXCHANGE_NAME, DLX_EXCHANGE } from "./connection.js";
 import type { ConsumeMessage } from "amqplib";
 import { context, propagation } from "@opentelemetry/api";
 
@@ -10,7 +10,10 @@ const subscribe = async (
   handler: EventHandler,
 ): Promise<void> => {
   const channel = getChannel();
-  await channel.assertQueue(queueName, { durable: true });
+  await channel.assertQueue(queueName, {
+    durable: true,
+    arguments: { "x-dead-letter-exchange": DLX_EXCHANGE },
+  });
   await channel.bindQueue(queueName, EXCHANGE_NAME, routingKey);
 
   await channel.consume(queueName, async (msg: ConsumeMessage | null) => {
