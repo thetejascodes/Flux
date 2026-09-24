@@ -14,7 +14,7 @@ const SALT_ROUNDS = 12;
 const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const issueTokens = async (userId: string, role: string) => {
-  const accessToken = generateAccessToken({ userId });
+  const accessToken = generateAccessToken({ userId,role });
   const refreshToken = generateRefreshToken();
   const refreshTokenHash = hashRefreshToken(refreshToken);
   await db.insert(sessions).values({
