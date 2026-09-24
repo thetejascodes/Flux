@@ -1,5 +1,4 @@
 import { subscribe } from "../../common/events/subscriber.js";
-import ApiError from "../../common/utils/api-errors.js";
 import { notify } from "./notifications.service.js";
 
 const handleOrderCreated = async (payload: unknown) => {
@@ -13,7 +12,6 @@ const handleOrderCreated = async (payload: unknown) => {
 
 const handlePaymentSucceeded = async (payload: unknown) => {
   const { orderId } = payload as { orderId: string };
-  throw ApiError.internal("forced failure for DLQ test");
   await notify(
     orderId,
     "PAYMENT_SUCCEEDED",
