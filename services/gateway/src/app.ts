@@ -5,6 +5,8 @@ import proxyTo from "./common/utils/proxy.utils.js";
 import isAuthenticated from "./modules/auth/auth.middleware.js";
 import rateLimiter from "./common/middleware/rateLimiter.js";
 import config from "./common/config/index.js";
+import { db } from "./common/db/index.js";
+import { sql } from "drizzle-orm";
 
 const app = express();
 const ordersLimiter = rateLimiter({
@@ -13,8 +15,20 @@ const ordersLimiter = rateLimiter({
   keyPrefix: "orders",
 });
 
-app.get("/health", (req, res) => {
-  res.json({ status: "ok" });
+app.get("/health", async (req, res) => {
+  const checks: Record<string, "ok" | "down"> = {
+    database: "ok",
+  };
+  try {
+    await db.execute(sql`SELECT 1`);
+  } catch {
+    checks.database = "down";
+  }
+  const allOk = Object.values(checks).every((status) => status === "ok");
+  res.status(allOk ? 200 : 503).json({
+    status: allOk ? "ok" : "degraded",
+    checks,
+  });
 });
 
 app.use("/catalog", isAuthenticated, proxyTo(config.services.catalogUrl));
