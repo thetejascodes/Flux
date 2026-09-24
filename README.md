@@ -68,36 +68,41 @@ See [ADR-0004](docs/adr/0004-saga-choreography.md) for the choreography-vs-orche
 ## Repository Structure
 
 A single monorepo, not seven separate repos — each service is still fully independent (own dependencies, own database, own Dockerfile), just co-located for easier solo development.
+
+```
 flux/
 ├── docker-compose.yml
 ├── scripts/
-│ └── init-databases.sh
+│   └── init-databases.sh
 ├── docs/
-│ └── adr/
+│   └── adr/
 ├── services/
-│ ├── gateway/ # auth (3 methods), routing ✅ complete
-│ ├── catalog/ # products, search ✅ complete
-│ ├── inventory/ # stock, reservations, expiry job ✅ complete
-│ ├── order/ # saga participant, order lifecycle ✅ complete
-│ ├── payment/ # simulated charges, idempotency ✅ complete
-│ ├── delivery/ # nearest-driver assignment, live tracking ✅ complete
-│ └── notification/ # event-driven alerts ✅ complete
+│   ├── gateway/        # auth (3 methods), routing            ✅ complete
+│   ├── catalog/        # products, search                     ✅ complete
+│   ├── inventory/      # stock, reservations, expiry job       ✅ complete
+│   ├── order/          # saga participant, order lifecycle      ✅ complete
+│   ├── payment/        # simulated charges, idempotency         ✅ complete
+│   ├── delivery/       # nearest-driver assignment, live tracking ✅ complete
+│   └── notification/   # event-driven alerts                   ✅ complete
 └── README.md
+```
 
 Each service follows the same shape:
 
+```
 services/<name>/
 ├── package.json, tsconfig.json, Dockerfile, .env, .env.docker
 └── src/
-├── app.ts, server.ts
-├── common/{config, db, dto, middlewares, utils, events, tracing.ts}/
-└── modules/<feature>/
-├── <feature>.routes.ts # HTTP-facing services only
-├── <feature>.controller.ts # HTTP-facing services only
-├── <feature>.service.ts
-├── <feature>.gateway.ts # saga event subscribers/publishers
-├── <feature>.service.test.ts # Vitest suite, co-located with the service it covers
-└── dto/
+    ├── app.ts, server.ts
+    ├── common/{config, db, dto, middlewares, utils, events, tracing.ts}/
+    └── modules/<feature>/
+        ├── <feature>.routes.ts       # HTTP-facing services only
+        ├── <feature>.controller.ts   # HTTP-facing services only
+        ├── <feature>.service.ts
+        ├── <feature>.gateway.ts      # saga event subscribers/publishers
+        ├── <feature>.service.test.ts # Vitest suite, co-located with the service it covers
+        └── dto/
+```
 
 `common/events/` (`connection.ts`, `publisher.ts`, `subscriber.ts`) wraps RabbitMQ behind a small generic API, with manual OpenTelemetry trace-context propagation built in — the publisher injects the active trace into message headers, the subscriber extracts it and wraps the handler so spans created downstream attach to the same trace, not a new disconnected one. `connection.ts` also asserts a shared dead-letter exchange (`flux.events.dlx`) and queue (`flux.events.dlq`) on connect, and `subscriber.ts`'s `assertQueue` call binds every consumer queue to it via the `x-dead-letter-exchange` argument, so a message that fails twice is preserved rather than dropped. `common/tracing.ts` is identical across all services and must load its own `dotenv/config` independently, since it runs before `server.ts` via Node's `--import` flag.
 
@@ -110,7 +115,7 @@ Gateway's auth module is the one deliberate exception to the "one `.service.test
 ## Services & Build Status
 
 | Service          | Status      | Responsibility                                                                                                         |
-| ---------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------- |
+| ---------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------ |
 | **Gateway**      | ✅ Complete | Auth (email/password, OTP, Google), request routing, token validation                                                  |
 | **Catalog**      | ✅ Complete | Products: create, get, list (filtered/paginated), update                                                               |
 | **Inventory**    | ✅ Complete | Per-location stock, concurrency-safe reservations with timeout, background expiry job                                  |
@@ -135,20 +140,20 @@ All three produce the same JWT (RS256, 15-minute expiry) + opaque refresh token 
 
 ## Tech Stack
 
-| Layer               | Technology                                                                      | Purpose                                                                             |
-| ------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| **Language**        | TypeScript (strict, ESM/nodenext)                                               | Type-safe code across all services                                                  |
-| **Runtime**         | Node.js 20, Express 5                                                           | Per-service HTTP APIs                                                               |
-| **Database**        | PostgreSQL (one per service), Drizzle ORM                                       | Durable, service-owned data                                                         |
-| **Cache / Locking** | Valkey (Redis-compatible)                                                       | Stock reservation TTLs, distributed locks                                           |
-| **Event Broker**    | RabbitMQ (topic exchange `flux.events`, dead-letter exchange `flux.events.dlx`) | Async communication between services, with failure preservation                     |
-| **Real-time**       | Socket.IO                                                                       | Live delivery position updates per order (room-scoped)                              |
-| **Tracing**         | OpenTelemetry + Jaeger                                                          | End-to-end request tracing, manually propagated across RabbitMQ                     |
-| **Auth**            | JWT (RS256), bcrypt, Twilio, Google OAuth2 (raw HTTPS)                          | Multi-method authentication                                                         |
-| **Notifications**   | Twilio (stubbed pending phone-lookup wiring)                                    | Event-driven customer alerts                                                        |
-| **Validation**      | Zod + BaseDto pattern                                                           | Schema-based DTO validation                                                         |
-| **Testing**         | Vitest                                                                          | Unit and integration tests, co-located per service — 70 tests across all 7 services |
-| **Dev Tooling**     | Docker Compose, tsc-watch                                                       | Local multi-service infrastructure                                                  |
+| Layer               | Technology                                                                       | Purpose                                                                              |
+| ------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| **Language**        | TypeScript (strict, ESM/nodenext)                                                | Type-safe code across all services                                                  |
+| **Runtime**         | Node.js 20, Express 5                                                            | Per-service HTTP APIs                                                               |
+| **Database**        | PostgreSQL (one per service), Drizzle ORM                                        | Durable, service-owned data                                                         |
+| **Cache / Locking** | Valkey (Redis-compatible)                                                        | Stock reservation TTLs, distributed locks                                           |
+| **Event Broker**    | RabbitMQ (topic exchange `flux.events`, dead-letter exchange `flux.events.dlx`)  | Async communication between services, with failure preservation                     |
+| **Real-time**       | Socket.IO                                                                        | Live delivery position updates per order (room-scoped)                              |
+| **Tracing**         | OpenTelemetry + Jaeger                                                           | End-to-end request tracing, manually propagated across RabbitMQ                     |
+| **Auth**            | JWT (RS256), bcrypt, Twilio, Google OAuth2 (raw HTTPS)                           | Multi-method authentication                                                         |
+| **Notifications**   | Twilio (stubbed pending phone-lookup wiring)                                     | Event-driven customer alerts                                                        |
+| **Validation**      | Zod + BaseDto pattern                                                            | Schema-based DTO validation                                                         |
+| **Testing**         | Vitest                                                                           | Unit and integration tests, co-located per service — 70 tests across all 7 services |
+| **Dev Tooling**     | Docker Compose, tsc-watch                                                        | Local multi-service infrastructure                                                  |
 
 ---
 
@@ -206,7 +211,7 @@ npm test
 ```
 
 | Service          | Suites | Focus                                                                                 |
-| ---------------- | ------ | ------------------------------------------------------------------------------------- |
+| ---------------- | ------ | --------------------------------------------------------------------------------------- |
 | **Gateway**      | 5      | Email/password, OTP, Google OAuth, shared token issuance, proxy-path token validation |
 | **Inventory**    | 1      | Zero-oversell concurrency, background expiry job                                      |
 | **Payment**      | 1      | Idempotency, scoped by key vs. by order                                               |
