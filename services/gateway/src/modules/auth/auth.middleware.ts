@@ -15,6 +15,7 @@ const isAuthenticated = async (
     const token = header.replace("Bearer ", "");
     const payload = verifyAccessToken(token);
     req.userId = payload.userId;
+    req.userRole = payload.role;
     next();
   } catch (error) {
     next(error);

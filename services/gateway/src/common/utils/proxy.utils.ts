@@ -9,6 +9,9 @@ const proxyTo = (target: string) => {
         if (req.userId) {
           proxyReq.setHeader("x-user-id", req.userId);
         }
+        if (req.userRole) {
+          proxyReq.setHeader("x-user-role", req.userRole);
+        }
       },
     },
   });
