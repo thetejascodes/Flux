@@ -1,0 +1,85 @@
+name: Gateway CI
+
+on:
+  push:
+    paths:
+      - "services/gateway/**"
+      - ".github/workflows/gateway.yml"
+  pull_request:
+    paths:
+      - "services/gateway/**"
+      - ".github/workflows/gateway.yml"
+
+defaults:
+  run:
+    working-directory: services/gateway
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: admin
+          POSTGRES_DB: gateway_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U admin"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PORT: 4000
+      DATABASE_URL: postgres://admin:admin@localhost:5432/gateway_db
+      REDIS_URL: redis://localhost:6379
+      JWT_ACCESS_EXPIRES_IN: 15m
+      CATALOG_SERVICE_URL: http://localhost:4001
+      INVENTORY_SERVICE_URL: http://localhost:4002
+      ORDER_SERVICE_URL: http://localhost:4003
+      OTP_STUB_MODE: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: services/gateway/package-lock.json
+
+      - name: Generate throwaway RSA keypair for JWT
+        run: |
+          openssl genrsa -out private.pem 2048
+          openssl rsa -in private.pem -pubout -out public.pem
+          echo "JWT_PRIVATE_KEY=$(base64 -w 0 private.pem)" >> "$GITHUB_ENV"
+          echo "JWT_PUBLIC_KEY=$(base64 -w 0 public.pem)" >> "$GITHUB_ENV"
+          rm private.pem public.pem
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build
+        run: npm run build
+
+      - name: Run migrations
+        run: npm run db:migrate
+
+      - name: Run tests
+        run: npm test
