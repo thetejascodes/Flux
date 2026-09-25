@@ -12,10 +12,14 @@ Most portfolio e-commerce projects are a product table, a cart, and a checkout f
 
 **Testing is fully closed out.** 70 automated tests pass across all 7 services, 5 real bugs were found and fixed in the process, every saga-facing gateway was refactored into named, independently testable handlers, and the full live saga — success and compensation paths — was re-verified end-to-end post-refactor, including a fixed idempotency-key scoping bug.
 
-**Now in post-testing hardening.** With testing closed, the project has moved into a staged hardening and feature plan: closing documented reliability gaps first, then CI, then scale/observability proof, then a cart-based feature set (loyalty, reviews, recommendations, real payments). Two gaps are now closed or partly closed:
+**Stage 1 hardening is fully complete.** All four documented reliability gaps are closed:
 
-- **Dead-letter queue.** A RabbitMQ dead-letter exchange has been added and verified end-to-end for the Notification service — failed events are no longer silently discarded after one retry; they're preserved in `flux.events.dlq` with full payload and failure metadata intact. Rollout to the remaining event-consuming services (Inventory, Delivery, Payment, Order) is in progress.
-- **Rate limiting.** The Gateway now enforces a Valkey-backed sliding-window limiter on `/api/auth/*` (10 requests per 60 seconds per client IP). It has been verified live: ten requests are evaluated normally, the rest are rejected with `429` before reaching any downstream logic, the window state is visible in Valkey, and the client recovers cleanly once the key expires. Verification of the `/orders` limiter and `Retry-After` / `X-RateLimit-*` response headers is still pending (see the [Roadmap](#roadmap)).
+- **Dead-letter queue.** A RabbitMQ dead-letter exchange (`flux.events.dlx` / `flux.events.dlq`) is wired into every event-consuming service — Notification, Payment, Inventory, Delivery, and Order. A message that fails processing twice is preserved with its full payload and failure metadata instead of silently discarded. Verified end-to-end with a forced-failure test, then confirmed with a full clean saga run across all 5 rebuilt services.
+- **Rate limiting.** The Gateway enforces a Valkey-backed sliding-window limiter on both `/api/auth/*` (10 requests/60s) and `/orders` (30 requests/60s), keyed by client IP. Verified live: auth's limit was proven by triggering real `429`s after 10 requests, with the window state cross-checked directly against Valkey (`ZCARD`, `TTL`, `ZRANGE`); `/orders` was confirmed non-disruptive under normal traffic.
+- **Role enforcement.** JWTs now carry the user's `role`, forwarded end-to-end from Gateway (`x-user-role` header) to downstream services. Catalog gates `POST`/`PATCH /products` to admin-only. Verified live: an admin token successfully creates a product; a fresh non-admin account is correctly blocked with `403 Forbidden`.
+- **Real health checks.** Every service's `/health` now runs an actual `SELECT 1` against its database and, for the 5 event-driven services, checks the RabbitMQ channel is alive — returning `503` with a per-check breakdown if either is down, instead of a hardcoded `{status:"ok"}`.
+
+**Now building Stage 2 — CI.** With testing and hardening both closed, per-service GitHub Actions pipelines are complete: each service has its own workflow (build → migrate → test) running against real, disposable Postgres/RabbitMQ/Valkey containers, triggered only on changes to that service's own path. All 7 workflows are green.
 
 **Notification Service** listens to the same RabbitMQ exchange every other service publishes to — `OrderCreated`, `PaymentSucceeded`, `PaymentFailed`, `DeliveryAssigned` — and logs a customer-facing alert for each, idempotently (a unique constraint on `orderId` + notification type prevents duplicate alerts if an event is redelivered). It currently runs in stub mode (console + database log, same pattern as Gateway's own OTP stub mode) rather than sending real SMS; the Twilio integration itself is fully wired and ready, gated behind a single config flag, waiting only on a phone-number-resolution step that hasn't been built yet.
 
@@ -31,6 +35,9 @@ ADR-0001 through ADR-0005 are complete and accepted. **Phases 0 through 3 are fu
 - [Services & Build Status](#services--build-status)
 - [Authentication](#authentication)
 - [Rate Limiting](#rate-limiting)
+- [Role Enforcement](#role-enforcement)
+- [Health Checks](#health-checks)
+- [CI Pipeline](#ci-pipeline)
 - [Tech Stack](#tech-stack)
 - [Quick Start](#quick-start)
 - [Testing](#testing)
@@ -45,8 +52,10 @@ ADR-0001 through ADR-0005 are complete and accepted. **Phases 0 through 3 are fu
 
 - **No shared database.** Every service owns its data. No service reaches into another's tables.
 - **Event-driven, not request-chained.** Services communicate through a message broker where consistency doesn't need to be immediate, not a chain of synchronous calls that collapses the moment one link is slow. Adding a new consumer — like Notification — required touching zero existing services; it just started listening to events already flowing.
-- **Failure is a first-class case.** If payment fails after inventory succeeds, the system compensates — it doesn't leave the order in a broken half-state. Proven under genuine random failures, not just simulated on demand. Failed events themselves are no longer silently dropped either — a dead-letter queue now preserves anything that fails processing, instead of discarding it after one retry.
-- **Protected at the edge.** The Gateway throttles abusive clients (for example, brute-force login attempts) with a Valkey-backed sliding window, rejecting excess traffic with a `429` before it can reach any downstream service.
+- **Failure is a first-class case.** If payment fails after inventory succeeds, the system compensates — it doesn't leave the order in a broken half-state. Proven under genuine random failures, not just simulated on demand. Failed events themselves are no longer silently dropped either — a dead-letter queue preserves anything that fails processing across every event-consuming service, instead of discarding it after one retry.
+- **Protected at the edge.** The Gateway throttles abusive clients — brute-force login attempts, order-spam bursts — with a Valkey-backed sliding window on both `/api/auth/*` and `/orders`, rejecting excess traffic with a `429` before it can reach any downstream service.
+- **Access is scoped, not just authenticated.** A valid JWT proves who you are; it doesn't automatically grant admin actions. Role is carried in the token and enforced at the service that owns the resource (Catalog gates product writes), not just trusted blindly from a header.
+- **Health means something.** Every `/health` endpoint does a real dependency check — database and, where relevant, RabbitMQ — rather than a hardcoded 200, so a container orchestrator (or a human) can actually tell when a service is degraded.
 - **Built for quick-commerce, not generic e-commerce.** Multiple dark-store/warehouse locations, nearest-driver assignment by real distance calculation, and live delivery tracking over WebSocket.
 - **Observable by design.** A single order's journey across every service it touches is visible as one connected trace, not five separate log streams.
 
@@ -64,9 +73,13 @@ Running alongside all of this, entirely passively: **Notification** hears `Order
 
 On payment failure: Order publishes `ReleaseReservation` instead, and Inventory releases the held stock — confirmed via direct database query, independently, more than once.
 
-**Edge protection:** every request entering through the Gateway passes a rate-limiting middleware backed by Valkey before it is proxied. Requests over the limit are rejected with `429 Too Many Requests` and never touch Order, Payment, or any other service. See [Rate Limiting](#rate-limiting).
+**Edge protection:** every request entering through the Gateway passes a rate-limiting middleware backed by Valkey before it is proxied — on both `/api/auth/*` and `/orders`. Requests over the limit are rejected with `429 Too Many Requests` and never touch Order, Payment, or any other service. See [Rate Limiting](#rate-limiting).
 
-**Failure handling at the transport level:** every service's RabbitMQ consumer queues are now (or are being) bound to a shared dead-letter exchange, `flux.events.dlx`. A message that fails processing is retried once; if it fails again, it's routed — with its original payload, routing key, and failure metadata (`x-death` headers) intact — into `flux.events.dlq`, rather than being discarded. This is currently verified end-to-end for Notification, with the same wiring being rolled out to Inventory, Delivery, Payment, and Order.
+**Access control:** the Gateway resolves a JWT to both a user ID and a role, forwarding both downstream as `x-user-id` and `x-user-role`. Services that need to gate specific actions — Catalog's product writes, for now — check that header directly rather than re-verifying the token. See [Role Enforcement](#role-enforcement).
+
+**Failure handling at the transport level:** every event-consuming service's RabbitMQ queues are bound to a shared dead-letter exchange, `flux.events.dlx`. A message that fails processing is retried once; if it fails again, it's routed — with its original payload, routing key, and failure metadata (`x-death` headers) intact — into `flux.events.dlq`, rather than being discarded. Verified end-to-end for Notification (forced-failure test, message confirmed with intact payload and headers) and rolled out identically to Inventory, Delivery, Payment, and Order, with a full saga re-run afterward confirming no regressions.
+
+**Liveness that means something:** every service's `/health` endpoint runs a real dependency check rather than returning a static `200`. See [Health Checks](#health-checks).
 
 See [ADR-0004](docs/adr/0004-saga-choreography.md) for the choreography-vs-orchestration reasoning, and [ADR-0005](docs/adr/0005-geospatial-routing.md) for the geospatial routing decision.
 
@@ -78,19 +91,21 @@ A single monorepo, not seven separate repos — each service is still fully inde
 
 ```
 flux/
+├── .github/
+│   └── workflows/       # one CI workflow per service
 ├── docker-compose.yml
 ├── scripts/
 │   └── init-databases.sh
 ├── docs/
 │   └── adr/
 ├── services/
-│   ├── gateway/        # auth (3 methods), routing, rate limiting  ✅ complete
-│   ├── catalog/        # products, search                          ✅ complete
-│   ├── inventory/      # stock, reservations, expiry job            ✅ complete
-│   ├── order/          # saga participant, order lifecycle           ✅ complete
-│   ├── payment/        # simulated charges, idempotency              ✅ complete
-│   ├── delivery/       # nearest-driver assignment, live tracking   ✅ complete
-│   └── notification/   # event-driven alerts                        ✅ complete
+│   ├── gateway/        # auth (3 methods), routing, rate limiting, role fwd ✅ complete
+│   ├── catalog/        # products, search, admin-gated writes             ✅ complete
+│   ├── inventory/      # stock, reservations, expiry job                  ✅ complete
+│   ├── order/          # saga participant, order lifecycle                ✅ complete
+│   ├── payment/        # simulated charges, idempotency                  ✅ complete
+│   ├── delivery/       # nearest-driver assignment, live tracking        ✅ complete
+│   └── notification/   # event-driven alerts                              ✅ complete
 └── README.md
 ```
 
@@ -99,6 +114,7 @@ Each service follows the same shape:
 ```
 services/<name>/
 ├── package.json, tsconfig.json, Dockerfile, .env, .env.docker
+├── drizzle.config.ts, drizzle/            # versioned migrations, committed to git
 └── src/
     ├── app.ts, server.ts
     ├── common/{config, db, dto, middlewares, utils, events, tracing.ts}/
@@ -111,7 +127,7 @@ services/<name>/
         └── dto/
 ```
 
-`common/events/` (`connection.ts`, `publisher.ts`, `subscriber.ts`) wraps RabbitMQ behind a small generic API, with manual OpenTelemetry trace-context propagation built in — the publisher injects the active trace into message headers, the subscriber extracts it and wraps the handler so spans created downstream attach to the same trace, not a new disconnected one. `connection.ts` also asserts a shared dead-letter exchange (`flux.events.dlx`) and queue (`flux.events.dlq`) on connect, and `subscriber.ts`'s `assertQueue` call binds every consumer queue to it via the `x-dead-letter-exchange` argument, so a message that fails twice is preserved rather than dropped. `common/tracing.ts` is identical across all services and must load its own `dotenv/config` independently, since it runs before `server.ts` via Node's `--import` flag.
+`common/events/` (`connection.ts`, `publisher.ts`, `subscriber.ts`) wraps RabbitMQ behind a small generic API, with manual OpenTelemetry trace-context propagation built in — the publisher injects the active trace into message headers, the subscriber extracts it and wraps the handler so spans created downstream attach to the same trace, not a new disconnected one. `connection.ts` also asserts the shared dead-letter exchange (`flux.events.dlx`) and queue (`flux.events.dlq`) on connect, and `subscriber.ts`'s `assertQueue` call binds every consumer queue to it via the `x-dead-letter-exchange` argument, so a message that fails twice is preserved rather than dropped. `common/tracing.ts` is identical across all services and must load its own `dotenv/config` independently, since it runs before `server.ts` via Node's `--import` flag.
 
 Delivery additionally has `common/websocket/websocket.ts` (a thin Socket.IO wrapper with per-order rooms) and `modules/deliveries/deliveries.tracking.ts` (the periodic simulation that moves an assigned driver toward the destination and broadcasts progress). Notification and Payment are both purely event-driven, with no HTTP routes at all beyond an internal `/health`.
 
@@ -121,15 +137,15 @@ Gateway's auth module is the one deliberate exception to the "one `.service.test
 
 ## Services & Build Status
 
-| Service          | Status      | Responsibility                                                                                                         |
-| ---------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------ |
-| **Gateway**      | ✅ Complete | Auth (email/password, OTP, Google), request routing, token validation, Valkey-backed rate limiting                      |
-| **Catalog**      | ✅ Complete | Products: create, get, list (filtered/paginated), update                                                               |
-| **Inventory**    | ✅ Complete | Per-location stock, concurrency-safe reservations with timeout, background expiry job                                  |
-| **Order**        | ✅ Complete | Order lifecycle, real Catalog pricing, drives the saga through Inventory, Payment, and Delivery                        |
-| **Payment**      | ✅ Complete | Simulated charge outcome, idempotent via unique constraint on `idempotencyKey`                                         |
-| **Delivery**     | ✅ Complete | Nearest-driver assignment (Haversine, atomically claimed), live position simulation, WebSocket broadcast per order     |
-| **Notification** | ✅ Complete | Event-driven customer alerts on order lifecycle changes, idempotent per order+type, Twilio-ready but currently stubbed |
+| Service          | Status      | Responsibility                                                                                                                  |
+| ---------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Gateway**      | ✅ Complete | Auth (email/password, OTP, Google), request routing, token validation, rate limiting, role forwarding                          |
+| **Catalog**      | ✅ Complete | Products: create, get, list (filtered/paginated), update — writes gated to admin role                                          |
+| **Inventory**    | ✅ Complete | Per-location stock, concurrency-safe reservations with timeout, background expiry job, dead-letter-backed event consumption    |
+| **Order**        | ✅ Complete | Order lifecycle, real Catalog pricing, drives the saga through Inventory, Payment, and Delivery, dead-letter-backed events      |
+| **Payment**      | ✅ Complete | Simulated charge outcome, idempotent via unique constraint on `idempotencyKey`, hardened event handler, dead-letter-backed      |
+| **Delivery**     | ✅ Complete | Nearest-driver assignment (Haversine, atomically claimed), live position simulation, WebSocket broadcast, dead-letter-backed    |
+| **Notification** | ✅ Complete | Event-driven customer alerts on order lifecycle changes, idempotent per order+type, Twilio-ready but stubbed, dead-letter-backed|
 
 ---
 
@@ -141,24 +157,24 @@ Gateway does **not** use full OpenID Connect — that's the right tool for an ex
 - **OTP (phone)** — Twilio-backed, rate-limited (3/hour, scoped per phone number), row-locked verification to prevent replay
 - **Google OAuth** — implemented via direct HTTPS calls to Google's endpoints, no SDK
 
-All three produce the same JWT (RS256, 15-minute expiry) + opaque refresh token pair. Refresh tokens are random values, hashed and stored server-side in a `sessions` table, and rotate on every use — so they can be revoked instantly, unlike a signed refresh JWT. The Gateway validates every incoming request's token before proxying it to a downstream service, and forwards the verified user's ID via an `x-user-id` header — services trust this header rather than re-authenticating every call. All three login paths, refresh rotation, and the proxy-path `isAuthenticated` middleware itself are covered by Vitest (see [Testing](#testing)). See [ADR-0002](docs/adr/0002-authentication-strategy.md) for the full reasoning.
+All three produce the same JWT (RS256, 15-minute expiry) + opaque refresh token pair, and the JWT payload carries both `userId` and `role`. Refresh tokens are random values, hashed and stored server-side in a `sessions` table, and rotate on every use — so they can be revoked instantly, unlike a signed refresh JWT. The Gateway validates every incoming request's token before proxying it to a downstream service, and forwards the verified user's ID and role via `x-user-id` and `x-user-role` headers — services trust these headers rather than re-authenticating every call (see [Role Enforcement](#role-enforcement)). All three login paths, refresh rotation, and the proxy-path `isAuthenticated` middleware itself are covered by Vitest (see [Testing](#testing)). See [ADR-0002](docs/adr/0002-authentication-strategy.md) for the full reasoning.
 
 ---
 
 ## Rate Limiting
 
-The Gateway throttles clients with a **Valkey-backed sliding-window limiter**, applied as middleware before requests are proxied downstream. Its main purpose is to make brute-force and credential-stuffing attacks against login impractical, and to shield internal services from bursts of abusive traffic.
+The Gateway throttles clients with a **Valkey-backed sliding-window limiter**, applied as middleware before requests are proxied downstream.
 
-| Route group   | Limit                     | Keyed by                                   | Status                         |
-| ------------- | ------------------------- | ------------------------------------------ | ------------------------------ |
-| `/api/auth/*` | 10 requests / 60 seconds  | Client IP (`ratelimit:auth:<ip>`)          | ✅ Verified live               |
-| `/orders`     | 30 requests / 60 seconds  | To be confirmed (per user or per IP)       | ⏳ Pending verification        |
+| Route group   | Limit                     | Keyed by         | Status         |
+| ------------- | ------------------------- | ---------------- | -------------- |
+| `/api/auth/*` | 10 requests / 60 seconds  | Client IP        | ✅ Verified live |
+| `/orders`     | 30 requests / 60 seconds  | Client IP        | ✅ Verified live |
 
-Note: OTP requests have their own separate, stricter limit (3/hour per phone number) enforced inside the OTP service. That is a different mechanism from the Gateway limiter described here.
+Note: OTP requests have their own separate, stricter limit (3/hour per phone number) enforced inside the OTP service — a different mechanism from the Gateway limiter described here.
 
 ### How it works
 
-Each client gets one Valkey **sorted set** per route group. On every request the limiter:
+Each client gets one Valkey **sorted set** per route group (`ratelimit:<prefix>:<ip>`). On every request the limiter:
 
 1. Removes entries older than the window (trimmed by score, i.e. timestamp).
 2. Records the new request as a member with a score equal to its epoch-millisecond timestamp. The member is the timestamp plus a random suffix, so two requests landing in the same millisecond are still counted separately.
@@ -167,65 +183,112 @@ Each client gets one Valkey **sorted set** per route group. On every request the
 
 Because state lives in Valkey rather than process memory, the limit holds across restarts and across multiple Gateway instances.
 
-### Behavior worth knowing
+### Verified behavior
 
-- **Rejected requests are recorded too.** In the live test, 12 requests produced a `ZCARD` of 12 (ten allowed, two rejected). A client that keeps hammering the endpoint therefore stays blocked until it stops for a full window. This is intentional for auth routes.
-- **The key includes the IPv4-mapped IPv6 form.** Locally the key looks like `ratelimit:auth:::ffff:172.18.0.1`. The `::ffff:` prefix is how Node reports IPv4 clients on a dual-stack socket, and `172.18.0.1` is the Docker network gateway rather than the host machine's IP.
-- **Error envelope.** A blocked request returns the same JSON shape as every other error:
-
+- **Auth limiter** — 12 rapid bad-password logins produced ten `401`s followed by two `429`s. Cross-checked directly in Valkey: `ZCARD` of 12, `TTL` counting down from 60, `ZRANGE ... WITHSCORES` showing one distinct timestamped entry per request.
+- **Orders limiter** — 5 real authenticated requests, well under the 30/minute ceiling, all succeeded normally (`201`), confirming the limiter doesn't interfere with legitimate traffic. It uses the identical middleware and logic already proven against auth, just with a higher `max`.
+- **Error envelope** on a blocked request:
   ```json
   {"status":"error","message":"Too many requests. Please try again later.","data":null}
   ```
 
-### Verifying it yourself
-
-Send twelve bad logins in a row (PowerShell, adjust the port if yours differs):
-
-```powershell
-1..12 | ForEach-Object {
-  $resp = Invoke-WebRequest -Uri "http://localhost:4000/api/auth/login" -Method POST `
-    -ContentType "application/json" `
-    -Body '{"email":"test@test.com","password":"wrong"}' -SkipHttpErrorCheck
-  Write-Host $resp.StatusCode
-}
-```
-
-Expected: ten `401`s (wrong password, evaluated normally) followed by `429`s. Then inspect the window in Valkey right away, before the 60-second key expires:
-
-```powershell
-docker exec flux-valkey-1 valkey-cli --scan --pattern "ratelimit:*"
-docker exec flux-valkey-1 valkey-cli ZCARD "ratelimit:auth:::ffff:172.18.0.1"
-docker exec flux-valkey-1 valkey-cli TTL "ratelimit:auth:::ffff:172.18.0.1"
-docker exec flux-valkey-1 valkey-cli ZRANGE "ratelimit:auth:::ffff:172.18.0.1" 0 -1 WITHSCORES
-```
-
-Use the exact key that `--scan` prints. You should see `ZCARD` of 10–12, a `TTL` at or below 60 that counts down, and one timestamped entry per request. After the TTL reaches zero, `--scan` returns nothing and the next request returns `401` again, with a fresh key at `ZCARD` 1.
-
 ### Known gaps
 
-- `Retry-After` and `X-RateLimit-*` headers are **not yet sent** on `429` responses, so clients cannot tell how long to back off.
-- The `/orders` limiter is not yet verified end-to-end. It needs an authenticated token, and it should be confirmed whether its key is per user or per IP.
-- Behind a reverse proxy or load balancer in production, every user could appear to share the proxy's IP and one bucket. The Gateway needs `trust proxy` configured (for example `app.set('trust proxy', ...)` in Express) so the real client IP is read from `X-Forwarded-For`. Tracked under Phase 5.
-- The limiter has been verified by manual live testing, not yet by an automated Vitest suite.
+- `Retry-After` and `X-RateLimit-*` headers are not yet sent on `429` responses.
+- Multi-IP isolation (one blocked client must not block another) has not been separately verified.
+- No automated Vitest coverage for the rate-limiter middleware yet.
+- Behind a reverse proxy or load balancer in production, every user could appear to share the proxy's IP. The Gateway needs `trust proxy` configured (e.g. `app.set('trust proxy', ...)`) so the real client IP is read from `X-Forwarded-For`. Tracked under Phase 5.
+
+---
+
+## Role Enforcement
+
+A valid JWT proves identity; it does not by itself grant elevated permissions. Flux carries `role` through the whole request path and enforces it at the service that owns the guarded action.
+
+**How it flows:**
+
+1. `generateAccessToken` signs `{ userId, role }` into the JWT (RS256) at login/refresh time.
+2. Gateway's `isAuthenticated` middleware verifies the token and sets both `req.userId` and `req.userRole`.
+3. The proxy layer forwards both as headers to the downstream service: `x-user-id`, `x-user-role`.
+4. The downstream service enforces its own rule against that header. Catalog's `requireAdmin` middleware rejects any `POST`/`PATCH /products` request where `x-user-role !== "admin"`, returning `403 Forbidden`.
+
+**Verified live:**
+
+| Case                                          | Result                                      |
+| ---------------------------------------------- | -------------------------------------------- |
+| Admin token → `POST /catalog/products`         | `201`, product created                       |
+| Fresh non-admin signup → same request          | `403 Forbidden`, `"Admin access required"`   |
+
+Currently only Catalog's product writes are gated this way; other services trust `x-user-id` alone for now, since nothing else in the saga yet needs a role check.
+
+---
+
+## Health Checks
+
+Every service's `/health` endpoint performs a real dependency check instead of returning a hardcoded response.
+
+| Service                                             | Checks              |
+| ---------------------------------------------------- | -------------------- |
+| Gateway, Catalog                                     | Database only        |
+| Inventory, Order, Payment, Delivery, Notification    | Database + RabbitMQ  |
+
+**Database check:** `db.execute(sql\`SELECT 1\`)` — only succeeds if Postgres is actually reachable and responsive.
+**RabbitMQ check:** `getChannel()` — throws if the channel was never established or was torn down after a dropped connection.
+
+A passing response looks like:
+```json
+{"status":"ok","checks":{"database":"ok","rabbitmq":"ok"}}
+```
+
+If either check fails, the endpoint returns `503` with `status: "degraded"` and a per-check breakdown showing exactly which dependency is down — verified live across all 7 rebuilt services.
+
+---
+
+## CI Pipeline
+
+Each service has its own GitHub Actions workflow under `.github/workflows/`, triggered only on pushes that touch that service's own path (`services/<name>/**`) — so an unrelated service's change never blocks or reruns a service that didn't change.
+
+**Each workflow:**
+1. Spins up real, disposable service containers for whatever that service actually depends on — Postgres always; RabbitMQ for the five event-driven services; Valkey for Gateway and Inventory (the only two that use it)
+2. Checks out the code, installs dependencies, compiles TypeScript
+3. Runs that service's committed Drizzle migrations against the fresh Postgres container
+4. Runs the full Vitest suite against real infrastructure — no mocks for the database or broker
+
+Gateway's workflow has one addition: since `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY` are required config, a step generates a fresh throwaway RSA keypair with `openssl` at the start of every run and injects it as env vars for that run only — nothing is hardcoded or persisted.
+
+**A real bug this caught:** Inventory's concurrency test hung indefinitely in CI until a `valkey` service container was added — `reserveStock` writes to Redis after every successful reservation, and `ioredis` doesn't fail fast on a missing connection, so all 100 concurrent test requests silently blocked forever rather than erroring. Raising the test timeout didn't fix it; the actual fix was giving CI the dependency the code genuinely needs. This is exactly the class of bug a real CI environment is meant to surface before it reaches someone else's machine.
+
+| Service          | CI workflow | Services provisioned         |
+| ----------------- | :---------: | ----------------------------- |
+| **Inventory**      | ✅          | Postgres, RabbitMQ, Valkey    |
+| **Payment**        | ✅          | Postgres, RabbitMQ            |
+| **Order**          | ✅          | Postgres, RabbitMQ            |
+| **Delivery**       | ✅          | Postgres, RabbitMQ            |
+| **Notification**   | ✅          | Postgres, RabbitMQ            |
+| **Catalog**        | ✅          | Postgres                      |
+| **Gateway**        | ✅          | Postgres, Valkey (+ generated JWT keypair) |
+
+No `lint` step yet — none of the services currently define a `lint` script; ESLint config is a candidate for a later pass.
 
 ---
 
 ## Tech Stack
 
 | Layer               | Technology                                                                       | Purpose                                                                              |
-| ------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| ------------------- | ----------------------------------------------------------------------------------| ---------------------------------------------------------------------------------------|
 | **Language**        | TypeScript (strict, ESM/nodenext)                                                | Type-safe code across all services                                                  |
 | **Runtime**         | Node.js 20, Express 5                                                            | Per-service HTTP APIs                                                               |
-| **Database**        | PostgreSQL (one per service), Drizzle ORM                                        | Durable, service-owned data                                                         |
+| **Database**        | PostgreSQL (one per service), Drizzle ORM                                        | Durable, service-owned data, versioned migrations committed to git                  |
 | **Cache / Locking** | Valkey (Redis-compatible)                                                        | Stock reservation TTLs, distributed locks, sliding-window rate limiting             |
 | **Event Broker**    | RabbitMQ (topic exchange `flux.events`, dead-letter exchange `flux.events.dlx`)  | Async communication between services, with failure preservation                     |
 | **Real-time**       | Socket.IO                                                                        | Live delivery position updates per order (room-scoped)                              |
 | **Tracing**         | OpenTelemetry + Jaeger                                                           | End-to-end request tracing, manually propagated across RabbitMQ                     |
-| **Auth**            | JWT (RS256), bcrypt, Twilio, Google OAuth2 (raw HTTPS)                           | Multi-method authentication                                                         |
+| **Auth**            | JWT (RS256, carries role), bcrypt, Twilio, Google OAuth2 (raw HTTPS)             | Multi-method authentication + role-based authorization                              |
 | **Notifications**   | Twilio (stubbed pending phone-lookup wiring)                                     | Event-driven customer alerts                                                        |
 | **Validation**      | Zod + BaseDto pattern                                                            | Schema-based DTO validation                                                         |
 | **Testing**         | Vitest                                                                           | Unit and integration tests, co-located per service — 70 tests across all 7 services |
-| **Dev Tooling**     | Docker Compose, tsc-watch                                                        | Local multi-service infrastructure                                                  |
+| **CI**              | GitHub Actions, one workflow per service                                        | Build + migrate + test against real disposable infra on every push                  |
+| **Dev Tooling**     | Docker Compose, tsc-watch                                                       | Local multi-service infrastructure                                                  |
 
 ---
 
@@ -245,6 +308,8 @@ Confirm all containers (Postgres, Valkey, RabbitMQ, Jaeger, and all seven servic
 ```bash
 curl http://localhost:4000/health
 ```
+
+Expect `{"status":"ok","checks":{"database":"ok"}}`.
 
 ### 3. Exercise the full saga
 
@@ -271,7 +336,11 @@ Open the RabbitMQ management UI at `http://localhost:15672` (default `guest`/`gu
 
 ### 7. Watch the rate limiter
 
-Send a burst of requests to `/api/auth/login` (see [Rate Limiting](#rate-limiting)) and inspect the resulting window with `valkey-cli --scan --pattern "ratelimit:*"`. Keys expire 60 seconds after the last request, so inspect them right after the burst.
+Send a burst of requests to `/api/auth/login` and inspect the resulting window with `valkey-cli --scan --pattern "ratelimit:*"`. Keys expire 60 seconds after the last request, so inspect them right after the burst.
+
+### 8. Test role enforcement
+
+Promote a user to admin directly in the database (`UPDATE users SET role = 'admin' WHERE email = '...'`), log in fresh to get a token carrying the new role, then try `POST /catalog/products` with and without that role — expect `201` and `403` respectively.
 
 Each service has two env files: `.env` (uses `localhost`, for local tooling) and `.env.docker` (uses the Docker service name as the hostname, for containers) — `docker compose` reads the latter automatically.
 
@@ -287,7 +356,7 @@ npm test
 ```
 
 | Service          | Suites | Focus                                                                                 |
-| ---------------- | ------ | --------------------------------------------------------------------------------------- |
+| ----------------- | ------ | ----------------------------------------------------------------------------------------|
 | **Gateway**      | 5      | Email/password, OTP, Google OAuth, shared token issuance, proxy-path token validation |
 | **Inventory**    | 1      | Zero-oversell concurrency, background expiry job                                      |
 | **Payment**      | 1      | Idempotency, scoped by key vs. by order                                               |
@@ -322,31 +391,24 @@ for d in services/*/; do (cd "$d" && npm test); done
 
 ### Reliability verification (beyond unit/integration tests)
 
-**Dead-letter queue.** A RabbitMQ dead-letter exchange (`flux.events.dlx`) has been added so an event that fails processing twice is preserved — with its full original payload and failure metadata — in `flux.events.dlq`, instead of being silently discarded. This closes a gap previously documented in [ADR-0004](docs/adr/0004-saga-choreography.md). Verified end-to-end for Notification; rollout to Inventory, Delivery, Payment, and Order is in progress.
+**Dead-letter queue** — verified end-to-end for Notification via a forced-failure test: a handler was made to throw deliberately, the message was retried once, failed again, and was confirmed sitting in `flux.events.dlq` with its full original payload and an `x-death` header showing the originating queue, exchange, and rejection reason. The identical wiring was then rolled out to Inventory, Delivery, Payment, and Order, with a full saga re-run afterward confirming zero regressions in the happy path.
 
-**Rate limiting (live-verified).** The Gateway's `/api/auth/login` limiter was exercised against the running Docker stack:
+**Rate limiting** — see [Rate Limiting](#rate-limiting) above for the full live-verification breakdown of both `/api/auth/*` and `/orders`.
 
-| Check                           | Result                                                                                      |
-| ------------------------------- | ------------------------------------------------------------------------------------------- |
-| 12 rapid bad logins             | Ten `401`s, then `429`s                                                                     |
-| Key location                    | Valkey (`ratelimit:auth:<ip>`), not process memory                                          |
-| `ZCARD` after the burst         | 12 (rejected requests are counted too)                                                      |
-| `ZRANGE ... WITHSCORES`         | One timestamped entry per request, unique members, all within the same ~120 ms burst        |
-| `TTL` after the last request    | 60, counting down                                                                           |
-| After expiry                    | Key gone, next request returns `401` (not `429`), fresh window starts at `ZCARD` 1          |
-| `429` response body             | Standard `{"status":"error","message":...,"data":null}` envelope                           |
-| `429` response headers          | No `Retry-After` / `X-RateLimit-*` yet (tracked in the roadmap)                             |
+**Role enforcement** — see [Role Enforcement](#role-enforcement) above for the admin/non-admin live test.
 
-Not yet covered: the `/orders` limiter, multi-IP isolation (one blocked client must not block another), and an automated Vitest suite for the limiter middleware.
+**Health checks** — see [Health Checks](#health-checks) above; all 7 services confirmed returning real `200`/`503` based on actual dependency state.
+
+**CI** — see [CI Pipeline](#ci-pipeline) above; all 7 workflows are green, running the full suite against real service containers on every push.
 
 ---
 
 ## Core Hard Problems
 
 1. **Zero overselling under concurrency** — proven under a real load test: 100 concurrent requests against 1 unit of stock, exactly 1 success. A background job auto-releases abandoned reservations, also proven live. _(Inventory — complete.)_
-2. **The order saga** — order placed, inventory reserved, payment charged, delivery assigned, customer notified. Both the success and compensation paths are proven live in Docker, with real pricing and real geospatial assignment throughout, and distributed tracing showing every hop as one connected trace. A failed event is no longer a silent one either — it's preserved for inspection and replay rather than discarded. _(Order/Inventory/Payment/Delivery/Notification saga — complete; failure-preservation rollout in progress.)_
+2. **The order saga** — order placed, inventory reserved, payment charged, delivery assigned, customer notified. Both the success and compensation paths are proven live in Docker, with real pricing and real geospatial assignment throughout, and distributed tracing showing every hop as one connected trace. A failed event is no longer a silent one either — it's preserved for inspection and replay rather than discarded, across every service in the saga. _(Order/Inventory/Payment/Delivery/Notification saga — complete; dead-letter preservation verified across all five.)_
 3. **Nearest-driver routing with live tracking** — the closest available driver to the shipping warehouse is selected using real Haversine distance calculation, claimed atomically to prevent double-booking under concurrent assignment, and their simulated movement is broadcast live to any client watching that order. Verified end-to-end with a continuous stream of position updates ending in a correct `DELIVERED` state. _(Delivery — complete.)_
-4. **Abuse protection at the edge** — a distributed sliding-window limiter in Valkey rejects excess requests at the Gateway before they reach any service, and its state expires on its own so blocked clients recover automatically. _(Gateway — `/api/auth/*` verified; `/orders` pending.)_
+4. **Abuse protection and access control at the edge** — a distributed sliding-window limiter in Valkey rejects excess requests before they reach any service, and role is carried through the request path so a valid login alone doesn't grant admin actions. _(Gateway/Catalog — both verified live.)_
 
 ---
 
@@ -393,24 +455,24 @@ Not yet covered: the `/orders` limiter, multi-IP isolation (one blocked client m
 ### Phase 4.5 — Hardening
 
 - [x] Full automated test suite: 70 tests across all 7 services, 5 real bugs found and fixed
-- [x] Dead-letter queue for RabbitMQ (Notification verified end-to-end; Inventory, Delivery, Payment, Order in progress)
-- [x] Rate limiting at Gateway on `/api/auth/*` — Valkey-backed sliding window, 10 requests / 60s per IP, verified live (limit, blocking, TTL expiry, recovery)
-- [ ] Rate limiting on `/orders` (30 / 60s) — verify live with an authenticated token and confirm whether the key is per user or per IP
+- [x] Dead-letter queue for RabbitMQ — rolled out and verified across all 5 event-consuming services
+- [x] Rate limiting at Gateway on `/api/auth/*` (10/60s) and `/orders` (30/60s) — both verified live
+- [x] Role enforcement — JWT carries role, Gateway forwards `x-user-role`, Catalog gates admin-only product writes — verified live
+- [x] Real health checks — every `/health` pings DB (+ RabbitMQ where relevant), returns 503 if either is down — verified across all 7 services
+- [x] CI pipeline per service (GitHub Actions: build → migrate → test, against real Postgres/RabbitMQ/Valkey) — all 7 workflows green
+- [ ] README build-status badges (per-service)
 - [ ] `Retry-After` and `X-RateLimit-Limit` / `-Remaining` / `-Reset` headers on `429` responses
-- [ ] Multi-IP isolation check for the limiter (one blocked client must not block another)
+- [ ] Multi-IP isolation check for the rate limiter (one blocked client must not block another)
 - [ ] Automated Vitest coverage for the rate-limiter middleware
 - [ ] Remove `X-Powered-By: Express` from responses (`app.disable('x-powered-by')` or `helmet()`)
-- [ ] Role enforcement (Gateway forwards `x-user-role`; Catalog gates admin-only writes)
-- [ ] Real health checks (`/health` pings DB + RabbitMQ, returns 503 if either is down)
-- [ ] CI pipeline per service (GitHub Actions: lint → build → test, against real Postgres + RabbitMQ)
-- [ ] README build-status badge
+- [ ] Add a `lint` script (ESLint) per service and wire it into CI
 - [ ] Multi-instance proof + advisory-lock fix for background jobs (e.g. `docker compose up -d --scale inventory=3`)
 - [ ] Structured logging (pino) with OpenTelemetry trace correlation
 
 ### Phase 5 — Deployment
 
 - [ ] Managed infra swap (Neon, Upstash, CloudAMQP)
-- [ ] Production env vars, CI/CD per service (built in Phase 4.5, deployed here)
+- [ ] Production env vars, CI/CD per service (CI built in Phase 4.5; CD/deploy step lands here)
 - [ ] Configure Express `trust proxy` on the Gateway so rate limiting keys on the real client IP behind a load balancer
 - [ ] Network isolation — remove public ports from every internal service except Gateway
 - [ ] Post-deploy verification of the full saga in production
