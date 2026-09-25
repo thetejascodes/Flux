@@ -1,5 +1,13 @@
 # Flux
 
+![Inventory CI](https://github.com/thetejascodes/Flux/actions/workflows/inventory.yml/badge.svg)
+![Payment CI](https://github.com/thetejascodes/Flux/actions/workflows/payment.yml/badge.svg)
+![Order CI](https://github.com/thetejascodes/Flux/actions/workflows/order.yml/badge.svg)
+![Delivery CI](https://github.com/thetejascodes/Flux/actions/workflows/delivery.yml/badge.svg)
+![Notification CI](https://github.com/thetejascodes/Flux/actions/workflows/notification.yml/badge.svg)
+![Catalog CI](https://github.com/thetejascodes/Flux/actions/workflows/catalog.yml/badge.svg)
+![Gateway CI](https://github.com/thetejascodes/Flux/actions/workflows/gateway.yml/badge.svg)
+
 > _One order. Six services. Zero excuses._
 
 Flux is a distributed quick-commerce platform built as a monorepo of independent services. The goal is to model the core problems behind modern order systems — inventory reservation under concurrency, service-to-service coordination, delivery routing, and failure recovery — without a single shared database.
@@ -275,7 +283,7 @@ No `lint` step yet — none of the services currently define a `lint` script; ES
 ## Tech Stack
 
 | Layer               | Technology                                                                       | Purpose                                                                              |
-| ------------------- | ----------------------------------------------------------------------------------| ---------------------------------------------------------------------------------------|
+| ------------------- | ------------------------------------------------------------------------------------| ---------------------------------------------------------------------------------------|
 | **Language**        | TypeScript (strict, ESM/nodenext)                                                | Type-safe code across all services                                                  |
 | **Runtime**         | Node.js 20, Express 5                                                            | Per-service HTTP APIs                                                               |
 | **Database**        | PostgreSQL (one per service), Drizzle ORM                                        | Durable, service-owned data, versioned migrations committed to git                  |
@@ -460,7 +468,7 @@ for d in services/*/; do (cd "$d" && npm test); done
 - [x] Role enforcement — JWT carries role, Gateway forwards `x-user-role`, Catalog gates admin-only product writes — verified live
 - [x] Real health checks — every `/health` pings DB (+ RabbitMQ where relevant), returns 503 if either is down — verified across all 7 services
 - [x] CI pipeline per service (GitHub Actions: build → migrate → test, against real Postgres/RabbitMQ/Valkey) — all 7 workflows green
-- [ ] README build-status badges (per-service)
+- [x] README build-status badges (per-service)
 - [ ] `Retry-After` and `X-RateLimit-Limit` / `-Remaining` / `-Reset` headers on `429` responses
 - [ ] Multi-IP isolation check for the rate limiter (one blocked client must not block another)
 - [ ] Automated Vitest coverage for the rate-limiter middleware
