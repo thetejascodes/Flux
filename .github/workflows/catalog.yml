@@ -1,0 +1,61 @@
+name: Catalog CI
+
+on:
+  push:
+    paths:
+      - "services/catalog/**"
+      - ".github/workflows/catalog.yml"
+  pull_request:
+    paths:
+      - "services/catalog/**"
+      - ".github/workflows/catalog.yml"
+
+defaults:
+  run:
+    working-directory: services/catalog
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: admin
+          POSTGRES_DB: catalog_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U admin"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PORT: 4001
+      DATABASE_URL: postgres://admin:admin@localhost:5432/catalog_db
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: services/catalog/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build
+        run: npm run build
+
+      - name: Run migrations
+        run: npm run db:migrate
+
+      - name: Run tests
+        run: npm test
