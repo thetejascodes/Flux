@@ -1,4 +1,4 @@
-const INVENTORY_URL = "http://localhost:4002";
+const INVENTORY_URL = "http://inventory:4002";
 const CONCURRENT_REQUESTS = 100;
 
 const PRODUCT_ID = "03208b3e-8eaa-4163-8fa8-914e99f204e2";
