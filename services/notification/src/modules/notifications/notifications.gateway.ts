@@ -1,8 +1,11 @@
 import { subscribe } from "../../common/events/subscriber.js";
 import { notify } from "./notifications.service.js";
+import logger from "../../common/logger.js";
 
 const handleOrderCreated = async (payload: unknown) => {
   const { orderId } = payload as { orderId: string };
+  logger.info("handling OrderCreated", { orderId });
+
   await notify(
     orderId,
     "ORDER_CREATED",
@@ -12,6 +15,8 @@ const handleOrderCreated = async (payload: unknown) => {
 
 const handlePaymentSucceeded = async (payload: unknown) => {
   const { orderId } = payload as { orderId: string };
+  logger.info("handling PaymentSucceeded", { orderId });
+
   await notify(
     orderId,
     "PAYMENT_SUCCEEDED",
@@ -21,6 +26,8 @@ const handlePaymentSucceeded = async (payload: unknown) => {
 
 const handlePaymentFailed = async (payload: unknown) => {
   const { orderId } = payload as { orderId: string };
+  logger.info("handling PaymentFailed", { orderId });
+
   await notify(
     orderId,
     "PAYMENT_FAILED",
@@ -30,6 +37,8 @@ const handlePaymentFailed = async (payload: unknown) => {
 
 const handleDeliveryAssigned = async (payload: unknown) => {
   const { orderId } = payload as { orderId: string };
+  logger.info("handling DeliveryAssigned", { orderId });
+
   await notify(
     orderId,
     "DELIVERY_ASSIGNED",
@@ -58,7 +67,7 @@ const registerNotificationSagaHandlers = async () => {
     "DeliveryAssigned",
     handleDeliveryAssigned,
   );
-  console.log("[notification-saga] all event handlers registered");
+  logger.info("all event handlers registered");
 };
 
 export {
