@@ -45,3 +45,5 @@ const logger = {
   debug: (msg: string, extra: Record<string, unknown> = {}) =>
     base.debug({ ...traceContext(), ...extra }, msg),
 };
+
+export default logger;
