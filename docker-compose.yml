@@ -66,6 +66,8 @@ services:
         condition: service_healthy
       valkey:
         condition: service_healthy
+      jaeger:
+        condition: service_started
 
   # Uncomment each block below once that service actually has code, a
   # package.json, and a .env file — trying to build/start a service before
