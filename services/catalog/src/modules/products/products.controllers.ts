@@ -6,6 +6,7 @@ import type {
   ListProductsQueryInput,
   UpdateProductInput,
 } from "./dto/products.dto.js";
+import logger from "../../common/logger.js";
 
 const createProduct = async (
   req: Request<{}, {}, CreateProductInput>,
@@ -14,6 +15,11 @@ const createProduct = async (
 ) => {
   try {
     const result = await productService.createProduct(req.body);
+    logger.info("product created", {
+      productId: result.id,
+      category: result.category,
+      createdBy: req.headers["x-user-id"],
+    });
     return ApiResponse.created(res, "Product created successfully", result);
   } catch (error) {
     next(error);
@@ -54,6 +60,11 @@ const updateProduct = async (
 ) => {
   try {
     const result = await productService.updateProduct(req.params.id, req.body);
+    logger.info("product updated", {
+      productId: req.params.id,
+      fields: Object.keys(req.body),
+      updatedBy: req.headers["x-user-id"],
+    });
     return ApiResponse.ok(res, "Product updated successfully", result);
   } catch (error) {
     next(error);
