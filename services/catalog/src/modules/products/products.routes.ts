@@ -1,7 +1,7 @@
 import { Router } from "express";
 import * as productController from "./products.controllers.js";
-import validate, { validateQuery } from "../../common/middlewares/validate.js";
-import requireAdmin from "../../common/middlewares/requireAdmin.js";
+import validate, { validateQuery } from "../../common/middleware/validate.js";
+import requireAdmin from "../../common/middleware/requireAdmin.js";
 import {
   CreateProductDto,
   ListProductsQueryDto,

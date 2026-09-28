@@ -1,5 +1,5 @@
 import express from "express";
-import errorHandler from "./common/middlewares/errorHandler.js";
+import errorHandler from "./common/middleware/errorHandler.js";
 import { db } from "./common/db/index.js";
 import { sql } from "drizzle-orm";
 import { getChannel } from "./common/events/connection.js";
