@@ -20,16 +20,12 @@ const googleCallback = async (
       throw ApiError.badRequest("Missing authorization code from Google");
     }
     const result = await googleAuthService.loginWithGoogle(code);
-    logger.info("Google login successful", {
-      userId: result.accessToken ? "issued" : undefined,
-    });
-
+    logger.info("Google login successful");
     return ApiResponse.ok(res, "Google login successful", result);
   } catch (error) {
     logger.error("Google login failed", {
       error: error instanceof Error ? error.message : String(error),
     });
-
     next(error);
   }
 };
