@@ -29,11 +29,13 @@ Most portfolio e-commerce projects are a product table, a cart, and a checkout f
 
 **Stage 2 — CI — is fully complete.** Per-service GitHub Actions pipelines are done: each service has its own workflow (build → migrate → test) running against real, disposable Postgres/RabbitMQ/Valkey containers, triggered only on changes to that service's own path. All 7 workflows are green, with build-status badges above.
 
-**Now in Stage 3 — scale + observability.** The concurrency guarantee proven earlier under Vitest has now been proven again under real horizontal scaling: Inventory was scaled to 3 independent instances, and the same 100-concurrent-request load test — this time hitting all 3 processes through Docker's internal load-balancing DNS, not one process's connection pool — still produced exactly 1 success and 99 clean conflicts. Scaling also exposed a real coordination bug: every instance's background job ran its own independent timer, so 3 instances meant the expiry/tracking sweep fired 3 times per interval instead of once. Fixed with `pg_try_advisory_lock` on both Inventory's expiry job and Delivery's tracking job, verified live — with 3 scaled instances and a manually expired reservation, only one instance's log line showed the sweep actually running. Structured logging (pino) with trace correlation is the one remaining item before Stage 3 closes.
+**Stage 3 — scale + observability — is fully complete.** The concurrency guarantee proven earlier under Vitest has been proven again under real horizontal scaling: Inventory was scaled to 3 independent instances, and the same 100-concurrent-request load test — this time hitting all 3 processes through Docker's internal load-balancing DNS, not one process's connection pool — still produced exactly 1 success and 99 clean conflicts. Scaling also exposed a real coordination bug: every instance's background job ran its own independent timer, so 3 instances meant the expiry/tracking sweep fired 3 times per interval instead of once. Fixed with `pg_try_advisory_lock` on both Inventory's expiry job and Delivery's tracking job, verified live — with 3 scaled instances and a manually expired reservation, only one instance's log line showed the sweep actually running.
+
+Structured logging (pino) now stamps the active OpenTelemetry `traceId`/`spanId` on every log line, and both Gateway and Catalog were brought into distributed tracing (neither had it before). A single order's trace now spans all **7 services and 76 spans**, starting at the Gateway's inbound request and running through Order's price lookup into Catalog — confirmed live in Jaeger, with Catalog's spans correctly nested under Order's `GET /products/:id` call. The error-handling middleware shared across all 7 services was also cleaned up: an expected 4xx error (a bad login, a forbidden admin action) now logs exactly one structured line with no raw stack trace, while an unexpected 5xx failure still logs the full stack, tagged with `traceId`, at `error` level. See [Structured Logging & Tracing](#structured-logging--tracing).
 
 **Notification Service** listens to the same RabbitMQ exchange every other service publishes to — `OrderCreated`, `PaymentSucceeded`, `PaymentFailed`, `DeliveryAssigned` — and logs a customer-facing alert for each, idempotently (a unique constraint on `orderId` + notification type prevents duplicate alerts if an event is redelivered). It currently runs in stub mode (console + database log, same pattern as Gateway's own OTP stub mode) rather than sending real SMS; the Twilio integration itself is fully wired and ready, gated behind a single config flag, waiting only on a phone-number-resolution step that hasn't been built yet.
 
-ADR-0001 through ADR-0005 are complete and accepted. **Phases 0 through 3 are fully closed**, and Phase 2's previously-open test-coverage gaps are now closed as part of the 70-test hardening pass. A frontend dashboard (optional, deprioritized), a case study write-up, and deployment remain, alongside the staged hardening/feature plan now underway.
+ADR-0001 through ADR-0005 are complete and accepted. **Phases 0 through 3 are fully closed**, and Phase 2's previously-open test-coverage gaps are now closed as part of the 70-test hardening pass. A frontend dashboard (optional, deprioritized), a case study write-up, and deployment remain, alongside the staged hardening/feature plan now underway — **Stage 4 (cart and multi-item orders) is next.**
 
 ---
 
@@ -49,6 +51,7 @@ ADR-0001 through ADR-0005 are complete and accepted. **Phases 0 through 3 are fu
 - [Health Checks](#health-checks)
 - [CI Pipeline](#ci-pipeline)
 - [Multi-Instance & Scaling](#multi-instance--scaling)
+- [Structured Logging & Tracing](#structured-logging--tracing)
 - [Tech Stack](#tech-stack)
 - [Quick Start](#quick-start)
 - [Testing](#testing)
@@ -68,7 +71,7 @@ ADR-0001 through ADR-0005 are complete and accepted. **Phases 0 through 3 are fu
 - **Access is scoped, not just authenticated.** A valid JWT proves who you are; it doesn't automatically grant admin actions. Role is carried in the token and enforced at the service that owns the resource (Catalog gates product writes), not just trusted blindly from a header.
 - **Health means something.** Every `/health` endpoint does a real dependency check — database and, where relevant, RabbitMQ — rather than a hardcoded 200, so a container orchestrator (or a human) can actually tell when a service is degraded.
 - **Built for quick-commerce, not generic e-commerce.** Multiple dark-store/warehouse locations, nearest-driver assignment by real distance calculation, and live delivery tracking over WebSocket.
-- **Observable by design.** A single order's journey across every service it touches is visible as one connected trace, not five separate log streams.
+- **Observable by design.** A single order's journey across every service it touches — including the entry point at the Gateway and the synchronous Catalog price lookup — is visible as one connected trace, not seven separate log streams.
 
 ---
 
@@ -76,9 +79,9 @@ ADR-0001 through ADR-0005 are complete and accepted. **Phases 0 through 3 are fu
 
 Each service owns its own PostgreSQL database. Synchronous calls are used only for two cases: Gateway's authenticated proxy, and Order's single price lookup from Catalog at placement time. Everything else — order state changes, payment confirmations, delivery assignment, live position updates, customer notifications — flows as events through RabbitMQ, or in Delivery's case, out to the browser over WebSocket.
 
-**The full proven saga, six services deep:**
+**The full proven saga, from the Gateway inward:**
 
-`POST /orders` → Order looks up real Catalog pricing, writes `PENDING`, publishes `OrderCreated` → Inventory atomically reserves stock, publishes `InventoryReserved` → Order updates to `STOCK_RESERVED`, publishes `ChargePayment` with the real amount → Payment simulates a charge, publishes `PaymentSucceeded`/`PaymentFailed` → on success, Order finalizes to `CONFIRMED` and publishes `AssignDelivery` (reusing the warehouse Inventory already reserved against) → Delivery atomically claims the nearest available driver by real Haversine distance, publishes `DeliveryAssigned` → a background simulation moves that driver toward the warehouse every 5 seconds, broadcasting live position updates over WebSocket to any subscribed client, until the delivery reaches `DELIVERED`.
+`POST /orders` (Gateway) → Order looks up real Catalog pricing via a synchronous call, writes `PENDING`, publishes `OrderCreated` → Inventory atomically reserves stock, publishes `InventoryReserved` → Order updates to `STOCK_RESERVED`, publishes `ChargePayment` with the real amount → Payment simulates a charge, publishes `PaymentSucceeded`/`PaymentFailed` → on success, Order finalizes to `CONFIRMED` and publishes `AssignDelivery` (reusing the warehouse Inventory already reserved against) → Delivery atomically claims the nearest available driver by real Haversine distance, publishes `DeliveryAssigned` → a background simulation moves that driver toward the warehouse every 5 seconds, broadcasting live position updates over WebSocket to any subscribed client, until the delivery reaches `DELIVERED`.
 
 Running alongside all of this, entirely passively: **Notification** hears `OrderCreated`, `PaymentSucceeded`, `PaymentFailed`, and `DeliveryAssigned` the moment they're published, and logs a corresponding customer alert for each — with no code changes required in any of the services actually producing those events.
 
@@ -93,6 +96,8 @@ On payment failure: Order publishes `ReleaseReservation` instead, and Inventory 
 **Liveness that means something:** every service's `/health` endpoint runs a real dependency check rather than returning a static `200`. See [Health Checks](#health-checks).
 
 **Coordinated background jobs under scale:** Inventory's reservation-expiry sweep and Delivery's driver-tracking simulation both hold a Postgres advisory lock (`pg_try_advisory_lock`) for the duration of their work, so that scaling either service to multiple instances doesn't cause every instance's timer to redo the same work in parallel. Only the instance that acquires the lock does anything that cycle; the rest return immediately. See [Multi-Instance & Scaling](#multi-instance--scaling).
+
+**Observable end-to-end:** every service, including Gateway and Catalog, is now wired into OpenTelemetry + Jaeger, and every log line across every service carries the active `traceId`/`spanId` via a shared pino wrapper. A single order's full journey — Gateway's inbound request, Order's synchronous Catalog price lookup, and every async hop through the saga — renders as one connected trace. See [Structured Logging & Tracing](#structured-logging--tracing).
 
 See [ADR-0004](docs/adr/0004-saga-choreography.md) for the choreography-vs-orchestration reasoning, and [ADR-0005](docs/adr/0005-geospatial-routing.md) for the geospatial routing decision.
 
@@ -113,7 +118,7 @@ flux/
 │   └── adr/
 ├── services/
 │   ├── gateway/        # auth (3 methods), routing, rate limiting, role fwd ✅ complete
-│   ├── catalog/        # products, search, admin-gated writes             ✅ complete
+│   ├── catalog/        # products, admin-gated writes                     ✅ complete
 │   ├── inventory/      # stock, reservations, expiry job                  ✅ complete
 │   ├── order/          # saga participant, order lifecycle                ✅ complete
 │   ├── payment/        # simulated charges, idempotency                  ✅ complete
@@ -130,7 +135,7 @@ services/<name>/
 ├── drizzle.config.ts, drizzle/            # versioned migrations, committed to git
 └── src/
     ├── app.ts, server.ts
-    ├── common/{config, db, dto, middlewares, utils, events, tracing.ts}/
+    ├── common/{config, db, dto, middleware, redis, utils, events, tracing.ts, logger.ts}/
     └── modules/<feature>/
         ├── <feature>.routes.ts       # HTTP-facing services only
         ├── <feature>.controller.ts   # HTTP-facing services only
@@ -140,7 +145,11 @@ services/<name>/
         └── dto/
 ```
 
+`common/middleware/` holds the shared `errorHandler.ts` (identical across all 7 services) alongside any service-specific middleware — Catalog's `requireAdmin`, Gateway's `isAuthenticated` and rate limiter. `common/redis/client.ts` (Gateway, Inventory) wraps the Valkey connection used for rate limiting and reservation TTLs respectively.
+
 `common/events/` (`connection.ts`, `publisher.ts`, `subscriber.ts`) wraps RabbitMQ behind a small generic API, with manual OpenTelemetry trace-context propagation built in — the publisher injects the active trace into message headers, the subscriber extracts it and wraps the handler so spans created downstream attach to the same trace, not a new disconnected one. `connection.ts` also asserts the shared dead-letter exchange (`flux.events.dlx`) and queue (`flux.events.dlq`) on connect, and `subscriber.ts`'s `assertQueue` call binds every consumer queue to it via the `x-dead-letter-exchange` argument, so a message that fails twice is preserved rather than dropped. `common/tracing.ts` is identical across all services and must load its own `dotenv/config` independently, since it runs before `server.ts` via Node's `--import` flag.
+
+`common/logger.ts` is a thin pino wrapper, identical across all 7 services: it stamps the active OpenTelemetry `traceId`/`spanId` (read via `trace.getActiveSpan()`) onto every `info`/`warn`/`error`/`debug` call, so any log line can be correlated back to its Jaeger trace. See [Structured Logging & Tracing](#structured-logging--tracing).
 
 Delivery additionally has `common/websocket/websocket.ts` (a thin Socket.IO wrapper with per-order rooms) and `modules/deliveries/deliveries.tracking.ts` (the periodic simulation that moves an assigned driver toward the destination and broadcasts progress). Notification and Payment are both purely event-driven, with no HTTP routes at all beyond an internal `/health`.
 
@@ -310,17 +319,20 @@ Both jobs now acquire a **Postgres session-level advisory lock** (`pg_try_adviso
 
 ```typescript
 const client = await pool.connect();
+let acquired = false;
 try {
-  const { rows: [{ acquired }] } = await client.query(
+  ({ rows: [{ acquired }] } = await client.query(
     "SELECT pg_try_advisory_lock($1) as acquired",
     [LOCK_KEY],
-  );
+  ));
   if (!acquired) return; // another instance already has this cycle
 
   // ...do the actual sweep/tick work...
 
 } finally {
-  await client.query("SELECT pg_advisory_unlock($1)", [LOCK_KEY]);
+  if (acquired) {
+    await client.query("SELECT pg_advisory_unlock($1)", [LOCK_KEY]);
+  }
   client.release();
 }
 ```
@@ -346,6 +358,50 @@ Note: Inventory's `docker-compose.yml` entry has no fixed host port mapping (unl
 
 ---
 
+## Structured Logging & Tracing
+
+Every service logs through the same thin `common/logger.ts` pino wrapper, and every service — including Gateway and Catalog, which had neither tracing nor structured logging until this stage — is wired into OpenTelemetry + Jaeger.
+
+### How it works
+
+- **`common/logger.ts`** wraps pino with `info` / `warn` / `error` / `debug` methods that take `(message, extra)`. Before writing, it calls `trace.getActiveSpan()` and, if a span is active, stamps `traceId` and `spanId` onto the log line automatically — callers never pass tracing info manually.
+- **`common/tracing.ts`**, identical across all 7 services, initializes OpenTelemetry and exports spans to Jaeger via OTLP. It loads before `server.ts` via Node's `--import` flag, and reads `SERVICE_NAME` / `OTEL_EXPORTER_OTLP_ENDPOINT` from its own `dotenv/config` call, since it runs before the app's own env loading.
+- Gateway and Catalog previously had no tracing at all. Both now have the full package: `common/tracing.ts`, the OpenTelemetry dependencies, the `--import` start/dev scripts, the required env vars, and a `jaeger` entry in `depends_on`.
+- **`common/middleware/errorHandler.ts`**, identical across all 7 services, is the single place every unhandled error terminates. It resolves a status and message once, then logs exactly one structured line: `logger.warn` (no stack) for an expected 4xx, `logger.error` (with the full `err` object, stack included) for an unexpected 5xx. Nothing calls `console.error` on the request path anymore.
+
+### Verified live
+
+An order's trace now starts at the Gateway's `POST /orders` span and runs, uninterrupted, through Order's synchronous Catalog price lookup and every asynchronous hop of the saga:
+
+```
+gateway POST → order POST → order GET (60.87ms) → catalog GET (47.86ms)
+                                                    → catalog request handler /products/:id
+                                                        → pg-pool.connect (21.68ms)
+                                                        → pg.query SELECT (13.83ms)
+```
+
+The trace header reports **7 services, 76 spans** (up from 6 services / 68 spans before Gateway and Catalog joined). The `url.full` tag on Order's span shows the real outbound call (`http://catalog:4001/products/...`), confirming Order is genuinely calling Catalog over the network rather than the trace being stitched together artificially. About 22ms of Catalog's response time is a fresh Postgres connection being opened (`pg.connect`, including its own `tcp.connect`/`dns.lookup`); `pg`'s default pool closes idle connections after 10 seconds, so a lightly used service like Catalog pays that setup cost on its next request — a cost that's invisible without a trace.
+
+A bad-password login and a non-admin write both produce a single clean log line from `errorHandler.ts`, with no raw stack trace, correctly correlated by `traceId` to the request's other log lines (e.g. the controller's own "login failed" or "admin access denied" log):
+
+```json
+{"level":40,"traceId":"7b011dc0...","status":401,"method":"POST","path":"/api/auth/login","msg":"Invalid email or password"}
+{"level":40,"traceId":"bffc7815...","userId":"...","role":"user","method":"POST","path":"/products","msg":"admin access denied"}
+{"level":40,"traceId":"bffc7815...","status":403,"method":"POST","path":"/products","msg":"Admin access required"}
+```
+
+### Try it yourself
+
+```bash
+docker compose up -d --build
+curl -X POST http://localhost:4000/api/auth/login -H "Content-Type: application/json" -d '{"email":"a@b.com","password":"wrong"}'
+docker compose logs gateway --tail 20
+```
+
+Then open `http://localhost:16686`, search under the `gateway` service, and open the most recent trace — it should start at the Gateway's inbound request and span all 7 services.
+
+---
+
 ## Tech Stack
 
 | Layer               | Technology                                                                       | Purpose                                                                              |
@@ -356,7 +412,8 @@ Note: Inventory's `docker-compose.yml` entry has no fixed host port mapping (unl
 | **Cache / Locking** | Valkey (Redis-compatible)                                                        | Stock reservation TTLs, distributed locks, sliding-window rate limiting             |
 | **Event Broker**    | RabbitMQ (topic exchange `flux.events`, dead-letter exchange `flux.events.dlx`)  | Async communication between services, with failure preservation                     |
 | **Real-time**       | Socket.IO                                                                        | Live delivery position updates per order (room-scoped)                              |
-| **Tracing**         | OpenTelemetry + Jaeger                                                           | End-to-end request tracing, manually propagated across RabbitMQ                     |
+| **Tracing**         | OpenTelemetry + Jaeger                                                           | End-to-end request tracing, manually propagated across RabbitMQ, across all 7 services|
+| **Logging**         | pino, with a shared trace-correlating wrapper (`common/logger.ts`)               | Structured, per-request logs correlated to their Jaeger trace via `traceId`         |
 | **Auth**            | JWT (RS256, carries role), bcrypt, Twilio, Google OAuth2 (raw HTTPS)             | Multi-method authentication + role-based authorization                              |
 | **Notifications**   | Twilio (stubbed pending phone-lookup wiring)                                     | Event-driven customer alerts                                                        |
 | **Validation**      | Zod + BaseDto pattern                                                            | Schema-based DTO validation                                                         |
@@ -375,7 +432,7 @@ docker compose up -d --build
 docker compose ps
 ```
 
-Confirm all containers (Postgres, Valkey, RabbitMQ, Jaeger, and all seven services) show `Up`.
+Confirm all containers (Postgres, Valkey, RabbitMQ, Jaeger, and all seven services) show `Up`. If you're rebuilding after changing source (not just config), `docker compose up -d --build` can reuse an already-running container instead of replacing it — run `docker compose down` first, then `docker compose build --no-cache <service>` and `docker compose up -d`, if you need to guarantee a clean rebuild.
 
 ### 2. Verify
 
@@ -402,7 +459,7 @@ Connect a Socket.IO client to `http://localhost:4005`, emit `subscribe` with the
 
 ### 5. Inspect a trace
 
-Open `http://localhost:16686`, search under the `order` service, and open the most recent trace — it should span every service that order touched.
+Open `http://localhost:16686`, search under the `gateway` service, and open the most recent trace — it should span all 7 services, starting at the Gateway's inbound request. See [Structured Logging & Tracing](#structured-logging--tracing).
 
 ### 6. Inspect the dead-letter queue
 
@@ -475,15 +532,18 @@ for d in services/*/; do (cd "$d" && npm test); done
 
 **CI** — see [CI Pipeline](#ci-pipeline) above; all 7 workflows are green, running the full suite against real service containers on every push.
 
+**Structured logging & tracing** — see [Structured Logging & Tracing](#structured-logging--tracing) above; all 7 services confirmed emitting trace-correlated structured logs, with a single order's trace spanning all 7 services / 76 spans in Jaeger.
+
 ---
 
 ## Core Hard Problems
 
 1. **Zero overselling under concurrency** — proven under a real load test: 100 concurrent requests against 1 unit of stock, exactly 1 success. A background job auto-releases abandoned reservations, also proven live. _(Inventory — complete.)_
-2. **The order saga** — order placed, inventory reserved, payment charged, delivery assigned, customer notified. Both the success and compensation paths are proven live in Docker, with real pricing and real geospatial assignment throughout, and distributed tracing showing every hop as one connected trace. A failed event is no longer a silent one either — it's preserved for inspection and replay rather than discarded, across every service in the saga. _(Order/Inventory/Payment/Delivery/Notification saga — complete; dead-letter preservation verified across all five.)_
+2. **The order saga** — order placed, inventory reserved, payment charged, delivery assigned, customer notified. Both the success and compensation paths are proven live in Docker, with real pricing and real geospatial assignment throughout, and distributed tracing showing every hop — from the Gateway's inbound request onward — as one connected trace. A failed event is no longer a silent one either — it's preserved for inspection and replay rather than discarded, across every service in the saga. _(Order/Inventory/Payment/Delivery/Notification saga — complete; dead-letter preservation verified across all five.)_
 3. **Nearest-driver routing with live tracking** — the closest available driver to the shipping warehouse is selected using real Haversine distance calculation, claimed atomically to prevent double-booking under concurrent assignment, and their simulated movement is broadcast live to any client watching that order. Verified end-to-end with a continuous stream of position updates ending in a correct `DELIVERED` state. _(Delivery — complete.)_
 4. **Abuse protection and access control at the edge** — a distributed sliding-window limiter in Valkey rejects excess requests before they reach any service, and role is carried through the request path so a valid login alone doesn't grant admin actions. _(Gateway/Catalog — both verified live.)_
 5. **Correctness under horizontal scaling** — the same zero-oversell guarantee holds when the guaranteeing service is scaled to multiple independent processes, and background jobs coordinate via a Postgres advisory lock so scaling never causes duplicate work. _(Inventory — verified live; Delivery has the identical fix applied.)_
+6. **Observability across service boundaries** — a single order's journey, including the synchronous Gateway → Order → Catalog hop, is visible as one connected trace across all 7 services, and every log line anywhere in the system can be correlated back to that trace by `traceId`. _(All 7 services — verified live, 76 spans per order.)_
 
 ---
 
@@ -535,14 +595,15 @@ for d in services/*/; do (cd "$d" && npm test); done
 - [x] Role enforcement — JWT carries role, Gateway forwards `x-user-role`, Catalog gates admin-only product writes — verified live
 - [x] Real health checks — every `/health` pings DB (+ RabbitMQ where relevant), returns 503 if either is down — verified across all 7 services
 - [x] CI pipeline per service (GitHub Actions: build → migrate → test, against real Postgres/RabbitMQ/Valkey) — all 7 workflows green
-- [ ] README build-status badges (per-service)
+- [x] README build-status badges (per-service)
 - [ ] `Retry-After` and `X-RateLimit-Limit` / `-Remaining` / `-Reset` headers on `429` responses
 - [ ] Multi-IP isolation check for the rate limiter (one blocked client must not block another)
 - [ ] Automated Vitest coverage for the rate-limiter middleware
 - [ ] Remove `X-Powered-By: Express` from responses (`app.disable('x-powered-by')` or `helmet()`)
 - [ ] Add a `lint` script (ESLint) per service and wire it into CI
 - [x] Multi-instance proof + advisory-lock fix for background jobs — Inventory scaled to 3 replicas, 100-request load test re-verified across processes, expiry/tracking jobs now advisory-lock-coordinated so only one instance runs per cycle
-- [ ] Structured logging (pino) with OpenTelemetry trace correlation
+- [x] Structured logging (pino) with OpenTelemetry trace correlation — rolled out across all 7 services, Gateway and Catalog additionally brought into tracing for the first time
+- [x] Shared `errorHandler.ts` cleaned up across all 7 services — single structured log line per error, no raw stack trace on expected 4xx errors
 
 ### Phase 5 — Deployment
 
@@ -558,9 +619,10 @@ for d in services/*/; do (cd "$d" && npm test); done
 
 - Seller/marketplace onboarding
 - Full admin back-office and analytics dashboards
-- Recommendation engine / personalization
 - Native mobile apps
 - Internationalization / multi-currency
+
+Recommendations, real search, and multi-warehouse stock selection are deferred to a later stage of the roadmap above rather than ruled out for v1.
 
 ---
 
