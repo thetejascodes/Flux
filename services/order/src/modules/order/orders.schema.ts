@@ -5,6 +5,7 @@ import {
   timestamp,
   pgEnum,
   index,
+  uniqueIndex,
   numeric,
 } from "drizzle-orm/pg-core";
 
@@ -79,5 +80,9 @@ export const cartItems = pgTable(
   },
   (table) => ({
     userIdIdx: index("cart_items_user_id_idx").on(table.userId),
+    userProductUnique: uniqueIndex("cart_items_user_id_product_id_unique").on(
+      table.userId,
+      table.productId,
+    ),
   }),
 );

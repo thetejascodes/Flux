@@ -36,6 +36,13 @@
       "when": 1790692004945,
       "tag": "0004_peaceful_hercules",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790710135825,
+      "tag": "0005_majestic_jackpot",
+      "breakpoints": true
     }
   ]
 }
