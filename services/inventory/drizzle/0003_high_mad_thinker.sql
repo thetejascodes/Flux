@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "reservations_order_id_product_id_unique" ON "reservations" USING btree ("order_id","product_id");

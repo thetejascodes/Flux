@@ -5,6 +5,7 @@ import {
   integer,
   timestamp,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 export const reservationStatusEnum = pgEnum("reservation_status", [
@@ -55,5 +56,8 @@ export const reservations = pgTable(
       table.status,
       table.expiresAt,
     ),
+    orderProductUnique: uniqueIndex(
+      "reservations_order_id_product_id_unique",
+    ).on(table.orderId, table.productId),
   }),
 );
