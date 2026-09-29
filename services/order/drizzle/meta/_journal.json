@@ -29,6 +29,13 @@
       "when": 1790677835103,
       "tag": "0003_keen_micromacro",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790692004945,
+      "tag": "0004_peaceful_hercules",
+      "breakpoints": true
     }
   ]
 }
