@@ -42,3 +42,22 @@ export const orders = pgTable(
     userIdIdx: index("orders_user_id_idx").on(table.userId),
   }),
 );
+
+export const orderItems = pgTable(
+  "order_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orderId: uuid("order_id")
+      .notNull()
+      .references(() => orders.id),
+    productId: uuid("product_id").notNull(),
+    quantity: integer("quantity").notNull(),
+    unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    orderIdIdx: index("order_items_order_id_idx").on(table.orderId),
+  }),
+);
