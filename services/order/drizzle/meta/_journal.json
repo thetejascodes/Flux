@@ -15,6 +15,13 @@
       "when": 1789642182867,
       "tag": "0001_robust_gideon",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790673233596,
+      "tag": "0002_milky_owl",
+      "breakpoints": true
     }
   ]
 }
