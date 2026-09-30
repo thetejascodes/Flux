@@ -4,6 +4,7 @@ import { eq, and, sql, gte, lt } from "drizzle-orm";
 import ApiError from "../../common/utils/api-error.js";
 import { redis } from "../../common/redis/client.js";
 import type { ReserveStockInput } from "./dto/stock.dto.js";
+import logger from "../../common/logger.js";
 
 const RESERVATION_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -132,4 +133,34 @@ const findExpiredPendingReservations = async () => {
     );
 };
 
-export { reserveStock, releaseReservation, confirmReservation,findExpiredPendingReservations };
+const releaseReservationsByOrderId = async (orderId: string) => {
+  const pending = await db
+    .select({ id: reservations.id })
+    .from(reservations)
+    .where(
+      and(
+        eq(reservations.orderId, orderId),
+        eq(reservations.status, "PENDING"),
+      ),
+    );
+
+  for (const { id } of pending) {
+    try {
+      await releaseReservation(id);
+    } catch (error) {
+      logger.error("failed to release reservation", {
+        orderId,
+        reservationId: id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+};
+
+export {
+  reserveStock,
+  releaseReservation,
+  confirmReservation,
+  findExpiredPendingReservations,
+  releaseReservationsByOrderId,
+};
