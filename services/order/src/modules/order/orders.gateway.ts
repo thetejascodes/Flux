@@ -4,15 +4,10 @@ import { updateOrderStatus } from "./orders.service.js";
 import logger from "../../common/logger.js";
 
 const handleInventoryReserved = async (payload: unknown) => {
-  const { orderId, reservationId } = payload as {
-    orderId: string;
-    reservationId: string;
-  };
-  logger.info("handling InventoryReserved", { orderId, reservationId });
+  const { orderId } = payload as { orderId: string };
+  logger.info("handling InventoryReserved", { orderId });
 
-  const order = await updateOrderStatus(orderId, "STOCK_RESERVED", {
-    reservationId,
-  });
+  const order = await updateOrderStatus(orderId, "STOCK_RESERVED");
   logger.info("order updated to STOCK_RESERVED, charging payment", {
     orderId,
     amount: order.totalAmount,
@@ -21,7 +16,7 @@ const handleInventoryReserved = async (payload: unknown) => {
   await publish("ChargePayment", {
     orderId,
     amount: order.totalAmount,
-    idempotencyKey: reservationId,
+    idempotencyKey: orderId,
   });
 };
 
@@ -31,6 +26,7 @@ const handleInventoryReservationFailed = async (payload: unknown) => {
 
   await updateOrderStatus(orderId, "STOCK_RESERVATION_FAILED");
 };
+
 const handlePaymentSucceeded = async (payload: unknown) => {
   const { orderId, paymentId } = payload as {
     orderId: string;
@@ -52,23 +48,16 @@ const handlePaymentSucceeded = async (payload: unknown) => {
     });
   }
 };
+
 const handlePaymentFailed = async (payload: unknown) => {
   const { orderId } = payload as { orderId: string };
   logger.warn("handling PaymentFailed", { orderId });
 
-  const order = await updateOrderStatus(orderId, "PAYMENT_FAILED");
+  await updateOrderStatus(orderId, "PAYMENT_FAILED");
 
-  if (order.reservationId) {
-    logger.info("releasing reservation after payment failure", {
-      orderId,
-      reservationId: order.reservationId,
-    });
+  logger.info("releasing reservations after payment failure", { orderId });
 
-    await publish("ReleaseReservation", {
-      orderId,
-      reservationId: order.reservationId,
-    });
-  }
+  await publish("ReleaseReservation", { orderId });
 };
 
 const registerOrderSagaHandlers = async () => {
