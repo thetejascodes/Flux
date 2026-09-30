@@ -510,10 +510,16 @@ Expect `{"status":"ok","checks":{"database":"ok"}}`.
 curl -X POST http://localhost:4000/orders \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
-  -d '{"productId": "...", "warehouseId": "...", "quantity": 1}'
+  -d '{
+    "warehouseId": "...",
+    "items": [
+      { "productId": "...", "quantity": 2 },
+      { "productId": "...", "quantity": 1 }
+    ]
+  }'
 ```
 
-Watch `docker compose logs -f order inventory payment delivery notification` to see the event chain fire in real time, including Notification's alerts at each stage. Payment simulates a charge with a ~90% success rate; on success, the saga continues all the way to a driver assignment and live tracking.
+An order can carry one item or several — `items` just needs at least one entry. Watch `docker compose logs -f order inventory payment delivery notification` to see the event chain fire in real time, including Notification's alerts at each stage. Payment simulates a charge with a ~90% success rate; on success, the saga continues all the way to a driver assignment and live tracking. If any item in the request has insufficient stock, Inventory releases everything already reserved for that order and the saga fails cleanly instead of leaving a half-reserved order — see [Cart & Multi-Item Orders](#cart--multi-item-orders).
 
 ### 4. Watch live delivery tracking
 
@@ -551,7 +557,7 @@ npm test
 | Service          | Suites | Focus                                                                                 |
 | ----------------- | ------ | ----------------------------------------------------------------------------------------|
 | **Gateway**      | 5      | Email/password, OTP, Google OAuth, shared token issuance, proxy-path token validation |
-| **Inventory**    | 1      | Zero-oversell concurrency, background expiry job                                      |
+| **Inventory**    | 2      | Zero-oversell concurrency, background expiry job, multi-item partial-compensation (and its happy-path counterpart) |
 | **Payment**      | 1      | Idempotency, scoped by key vs. by order                                               |
 | **Order**        | 1      | Real-pricing derivation, saga handler correctness across all four handlers            |
 | **Delivery**     | 1      | Concurrent claim, transaction rollback, nearest-driver selection                      |
@@ -562,11 +568,11 @@ npm test
 
 **Gateway** — the most thoroughly covered service, with five suites spanning all three login methods, the shared token machinery, and the request-facing side of auth: `auth.service.test.ts` (email/password + refresh — signup creates the user and email identity, duplicate emails are rejected, login returns both tokens and rejects bad credentials with the _same_ message as an unknown email to prevent account enumeration, refresh rotates and invalidates the previous token, and sessions receive the expected ~7-day expiry); `otp.service.test.ts` (rate-limiting at 3/hour scoped per phone number rather than globally, codes stored only as a hash — never in plaintext, new-user creation vs. existing-user reuse across repeat logins, and rejection of wrong, expired, already-consumed, and never-requested codes); `google-auth.service.test.ts` (the authorization URL's params, both of Google's HTTP calls succeeding and failing correctly, new-user creation vs. existing-identity reuse on repeat login, and that a failed token exchange or profile fetch never leaves a stray user row behind); `otp.test.ts` (the Twilio wrapper in isolation — stub mode logs to console and skips Twilio entirely, live mode sends the exact expected payload, and a Twilio-side failure propagates instead of being silently swallowed); and `auth.middleware.test.ts` (the `isAuthenticated` proxy-path check itself — a valid token sets `req.userId` and calls through cleanly, a missing or malformed `Authorization` header is rejected with a 401 rather than crashing, and a thrown verification error, such as an expired token, is correctly forwarded to the error handler instead of swallowed).
 
-**Inventory** — concurrency safety is proven with a real 100-concurrent-request test against 1 unit of stock: exactly 1 reservation succeeds, 99 are cleanly rejected with a conflict, and none of the 99 fail for an unrelated reason. The same scenario is also exercised as a standalone load-test script (`scripts/load-test-reservation.ts`) that hits a running instance directly over HTTP, independent of the Vitest suite, so the guarantee is checked both at the unit level and against the real running service.
+**Inventory** — concurrency safety is proven with a real 100-concurrent-request test against 1 unit of stock: exactly 1 reservation succeeds, 99 are cleanly rejected with a conflict, and none of the 99 fail for an unrelated reason. The same scenario is also exercised as a standalone load-test script (`scripts/load-test-reservation.ts`) that hits a running instance directly over HTTP, independent of the Vitest suite, so the guarantee is checked both at the unit level and against the real running service. A separate suite covers the multi-item `OrderCreated` handler directly: one test seeds one product with stock and one without, and confirms the in-stock item's reservation is explicitly released (not left `PENDING`) and stock is fully restored when a later item fails; a companion test confirms both items reserve and `InventoryReserved` fires exactly once when every item has stock. See [Cart & Multi-Item Orders](#cart--multi-item-orders) for this same scenario verified live in Docker, not just under Vitest.
 
 **Payment** — idempotency is proven with three cases: the same `idempotencyKey` called twice returns the same payment row and the same outcome rather than re-rolling a fresh charge result, while a different `idempotencyKey` against the same `orderId` correctly creates a second, independent payment row — confirming the unique constraint is scoped to the key, not the order, so a legitimate retry after a failed attempt isn't blocked. The event handler (`handleChargePayment`) itself has also been hardened: a validation failure now publishes a compensating `PaymentFailed` instead of silently dropping the event, and a thrown error from `chargePayment` is now caught and handled rather than left unguarded.
 
-**Order** — pricing is tested against a mocked Catalog response, catching a real rounding bug where `.toFixed()` with no argument silently collapsed `99.98` to `100`; a Catalog-unreachable case confirms a clean error instead of an unhandled network exception; and all four saga handlers — `InventoryReserved`, `InventoryReservationFailed`, `PaymentSucceeded`, and `PaymentFailed` — are tested as actually-imported, directly-called functions (not a re-statement of their own inputs), confirming `InventoryReserved` correctly derives its idempotency key from the reservation, not the order, so a genuine retry after a released reservation isn't blocked.
+**Order** — pricing is tested against a mocked Catalog response for both a single item (catching a real rounding bug where `.toFixed()` with no argument silently collapsed `99.98` to `100`) and multiple different-priced items (confirming `subtotal` sums correctly and each item lands in `order_items` with its own snapshotted price); a Catalog-unreachable case confirms a clean error instead of an unhandled network exception; and all four saga handlers — `InventoryReserved`, `InventoryReservationFailed`, `PaymentSucceeded`, and `PaymentFailed` — are tested as actually-imported, directly-called functions (not a re-statement of their own inputs), confirming `InventoryReserved` uses the order's own ID as Payment's idempotency key — stable across a redelivery of the same event, unlike the earlier per-reservation key it replaced.
 
 **Catalog** — the 12-test suite covers product creation with exact two-decimal price storage, lookup of existing and nonexistent products, unfiltered and category-filtered listing, pagination across multiple pages, empty filter results, partial updates that preserve unspecified fields, price updates without floating-point corruption, and not-found handling for updates.
 
@@ -595,6 +601,8 @@ for d in services/*/; do (cd "$d" && npm test); done
 **CI** — see [CI Pipeline](#ci-pipeline) above; all 7 workflows are green, running the full suite against real service containers on every push.
 
 **Structured logging & tracing** — see [Structured Logging & Tracing](#structured-logging--tracing) above; all 7 services confirmed emitting trace-correlated structured logs, with a single order's trace spanning all 7 services / 76 spans in Jaeger.
+
+**Multi-item partial compensation** — see [Cart & Multi-Item Orders](#cart--multi-item-orders) above for the full live-verification breakdown: a real reservation created and then genuinely released (confirmed by direct database query, not just logs), stock restored, exactly one failure event published — plus the equivalent happy path proven on the same trace, end to end through to delivery.
 
 ---
 
