@@ -14,6 +14,10 @@ const config = {
   services: {
     catalogUrl: required("CATALOG_SERVICE_URL"),
   },
+  shipping: {
+    freeThreshold: Number(optional("FREE_SHIPPING_THRESHOLD", "500")),
+    flatFee: Number(optional("SHIPPING_FLAT_FEE", "40")),
+  },
 };
 
 export default config;
