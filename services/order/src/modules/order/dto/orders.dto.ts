@@ -3,9 +3,13 @@ import { z } from "zod";
 
 class PlaceOrderDto extends BaseDto {
   static schema = z.object({
-    productId: z.string().uuid(),
     warehouseId: z.string().uuid(),
-    quantity: z.number().int().positive(),
+    items: z.array(
+      z.object({
+        productId: z.string().uuid(),
+        quantity: z.number().int().positive(),
+      }),
+    ).min(1),
   });
 }
 
