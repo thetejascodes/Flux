@@ -1,5 +1,5 @@
 import { db } from "../../common/db/index.js";
-import { orders, orderStatus } from "../../common/db/schema.js";
+import { orders, orderStatus, orderItems } from "../../common/db/schema.js";
 import { eq } from "drizzle-orm";
 import ApiError from "../../common/utils/api-error.js";
 import { publish } from "../../common/events/publisher.js";
@@ -34,31 +34,67 @@ const getProductPrice = async (productId: string): Promise<number> => {
 };
 
 const placeOrder = async (userId: string, input: PlaceOrderInput) => {
-  const { productId, warehouseId, quantity } = input;
-  const unitPrice = await getProductPrice(productId);
-  const totalAmount = (unitPrice * quantity).toFixed(2);
+  const { warehouseId, items } = input;
 
-  const [order] = await db
-    .insert(orders)
-    .values({
-      userId,
-      productId,
-      warehouseId,
-      quantity,
-      totalAmount,
-      status: "PENDING",
-    })
-    .returning();
+  const itemsWithPrice = await Promise.all(
+    items.map(async (item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      unitPrice: await getProductPrice(item.productId),
+    })),
+  );
 
-  if (!order) {
-    throw ApiError.internal("Failed to create order");
-  }
+  const subtotal = itemsWithPrice.reduce(
+    (sum, item) => sum + item.unitPrice * item.quantity,
+    0,
+  );
+
+  const shippingFee =
+    subtotal >= config.shipping.freeThreshold ? 0 : config.shipping.flatFee;
+
+  const totalAmount = subtotal + shippingFee;
+
+  const order = await db.transaction(async (tx) => {
+    const [order] = await tx
+      .insert(orders)
+      .values({
+        userId,
+        warehouseId,
+        subtotal: subtotal.toFixed(2),
+        shippingFee: shippingFee.toFixed(2),
+        totalAmount: totalAmount.toFixed(2),
+        status: "PENDING",
+      })
+      .returning();
+
+    if (!order) {
+      throw ApiError.internal("Failed to create order");
+    }
+
+    await tx.insert(orderItems).values(
+      itemsWithPrice.map((item) => ({
+        orderId: order.id,
+        productId: item.productId,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice.toFixed(2),
+      })),
+    );
+
+    return order;
+  });
 
   await publish("OrderCreated", {
     orderId: order.id,
-    productId,
+    userId,
     warehouseId,
-    quantity,
+    items: itemsWithPrice.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice.toFixed(2),
+    })),
+    subtotal: subtotal.toFixed(2),
+    shippingFee: shippingFee.toFixed(2),
+    totalAmount: totalAmount.toFixed(2),
   });
 
   return order;
@@ -75,7 +111,7 @@ const getOrderById = async (id: string) => {
 const updateOrderStatus = async (
   orderId: string,
   status: (typeof orderStatus.enumValues)[number],
-  extra: Partial<{ reservationId: string; paymentId: string }> = {},
+  extra: Partial<{ paymentId: string }> = {},
 ) => {
   const [order] = await db
     .update(orders)
