@@ -4,62 +4,87 @@ import ApiError from "../../common/utils/api-error.js";
 import {
   reserveStock,
   releaseReservation as releaseReservationById,
+  releaseReservationsByOrderId,
 } from "./stock.service.js";
 import logger from "../../common/logger.js";
 
+interface OrderItem {
+  productId: string;
+  quantity: number;
+}
+
 const handleOrderCreated = async (payload: unknown) => {
-  const { orderId, productId, warehouseId, quantity } = payload as {
+  const { orderId, warehouseId, items } = payload as {
     orderId: string;
-    productId: string;
     warehouseId: string;
-    quantity: number;
+    items: OrderItem[];
   };
   logger.info("handling OrderCreated", {
     orderId,
-    productId,
     warehouseId,
-    quantity,
+    itemCount: items.length,
   });
 
-  try {
-    const reservation = await reserveStock({
-      productId,
-      warehouseId,
-      quantity,
-      orderId,
-    });
-    logger.info("stock reserved", { orderId, reservationId: reservation.id });
-    await publish("InventoryReserved", {
-      orderId,
-      reservationId: reservation.id,
-    });
-  } catch (error) {
-    if (error instanceof ApiError && error.statusCode === 409) {
-      logger.warn("insufficient stock, reservation failed", {
-        orderId,
-        productId,
-        warehouseId,
-      });
+  const succeededReservationIds: string[] = [];
 
-      await publish("InventoryReservationFailed", { orderId });
-      return;
+  for (const item of items) {
+    try {
+      const reservation = await reserveStock({
+        productId: item.productId,
+        warehouseId,
+        quantity: item.quantity,
+        orderId,
+      });
+      succeededReservationIds.push(reservation.id);
+      logger.info("item reserved", {
+        orderId,
+        productId: item.productId,
+        reservationId: reservation.id,
+      });
+    } catch (error) {
+      if (error instanceof ApiError && error.statusCode === 409) {
+        logger.warn("insufficient stock for item, compensating", {
+          orderId,
+          productId: item.productId,
+        });
+
+        for (const reservationId of succeededReservationIds) {
+          try {
+            await releaseReservationById(reservationId);
+          } catch (releaseError) {
+            logger.error("failed to release reservation during compensation", {
+              orderId,
+              reservationId,
+              error:
+                releaseError instanceof Error
+                  ? releaseError.message
+                  : String(releaseError),
+            });
+          }
+        }
+
+        await publish("InventoryReservationFailed", { orderId });
+        return;
+      }
+
+      logger.error("unexpected error reserving stock", {
+        orderId,
+        productId: item.productId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     }
-    logger.error("unexpected error reserving stock", {
-      orderId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    throw error;
   }
+
+  logger.info("all items reserved", { orderId });
+  await publish("InventoryReserved", { orderId });
 };
 
 const handleReleaseReservation = async (payload: unknown) => {
-  const { reservationId } = payload as {
-    orderId: string;
-    reservationId: string;
-  };
-  logger.info("releasing reservation", { reservationId });
+  const { orderId } = payload as { orderId: string };
+  logger.info("releasing all reservations for order", { orderId });
 
-  await releaseReservationById(reservationId);
+  await releaseReservationsByOrderId(orderId);
 };
 
 const registerInventorySagaHandlers = async () => {
