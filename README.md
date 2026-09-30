@@ -35,7 +35,9 @@ Structured logging (pino) now stamps the active OpenTelemetry `traceId`/`spanId`
 
 **Notification Service** listens to the same RabbitMQ exchange every other service publishes to — `OrderCreated`, `PaymentSucceeded`, `PaymentFailed`, `DeliveryAssigned` — and logs a customer-facing alert for each, idempotently (a unique constraint on `orderId` + notification type prevents duplicate alerts if an event is redelivered). It currently runs in stub mode (console + database log, same pattern as Gateway's own OTP stub mode) rather than sending real SMS; the Twilio integration itself is fully wired and ready, gated behind a single config flag, waiting only on a phone-number-resolution step that hasn't been built yet.
 
-ADR-0001 through ADR-0005 are complete and accepted. **Phases 0 through 3 are fully closed**, and Phase 2's previously-open test-coverage gaps are now closed as part of the 70-test hardening pass. A frontend dashboard (optional, deprioritized), a case study write-up, and deployment remain, alongside the staged hardening/feature plan now underway — **Stage 4 (cart and multi-item orders) is next.**
+**Stage 4 — cart and multi-item orders — is fully complete.** Orders are no longer single-product: a `PlaceOrder` request now takes a `warehouseId` and an array of `{ productId, quantity }` items, priced against Catalog in parallel, snapshotted into a new `order_items` table, and summed into `subtotal` + `shippingFee` (a free-shipping threshold) + `totalAmount` on `orders`. A server-side, persisted `cart_items` table (upsert-safe via a `(userId, productId)` unique constraint) backs future cart abandonment recovery. The riskiest part of this stage — partial compensation, where one item in a multi-item order fails to reserve after others already succeeded — is implemented in Inventory's `OrderCreated` handler: it reserves items sequentially, and if item N fails, releases every item reserved before it and publishes exactly one `InventoryReservationFailed` for the whole order. This is proven at three levels: a dedicated Vitest suite, a green CI run, and a real live Docker run (documented in [Cart & Multi-Item Orders](#cart--multi-item-orders)) showing an actual reservation created, then actually released, stock actually restored — not just logged. The equivalent happy path (both items reserved, payment charged, delivery assigned, all the way to a live driver simulation) was also verified live on the same trace.
+
+ADR-0001 through ADR-0005 are complete and accepted. **Phases 0 through 3 are fully closed**, and Phase 2's previously-open test-coverage gaps are now closed as part of the 70-test hardening pass. A frontend dashboard (optional, deprioritized), a case study write-up, and deployment remain, alongside the staged hardening/feature plan now underway — **Stage 5 (cart abandonment recovery, reviews, loyalty/rewards, reorder/subscriptions) is next.**
 
 ---
 
@@ -52,6 +54,7 @@ ADR-0001 through ADR-0005 are complete and accepted. **Phases 0 through 3 are fu
 - [CI Pipeline](#ci-pipeline)
 - [Multi-Instance & Scaling](#multi-instance--scaling)
 - [Structured Logging & Tracing](#structured-logging--tracing)
+- [Cart & Multi-Item Orders](#cart--multi-item-orders)
 - [Tech Stack](#tech-stack)
 - [Quick Start](#quick-start)
 - [Testing](#testing)
@@ -81,7 +84,7 @@ Each service owns its own PostgreSQL database. Synchronous calls are used only f
 
 **The full proven saga, from the Gateway inward:**
 
-`POST /orders` (Gateway) → Order looks up real Catalog pricing via a synchronous call, writes `PENDING`, publishes `OrderCreated` → Inventory atomically reserves stock, publishes `InventoryReserved` → Order updates to `STOCK_RESERVED`, publishes `ChargePayment` with the real amount → Payment simulates a charge, publishes `PaymentSucceeded`/`PaymentFailed` → on success, Order finalizes to `CONFIRMED` and publishes `AssignDelivery` (reusing the warehouse Inventory already reserved against) → Delivery atomically claims the nearest available driver by real Haversine distance, publishes `DeliveryAssigned` → a background simulation moves that driver toward the warehouse every 5 seconds, broadcasting live position updates over WebSocket to any subscribed client, until the delivery reaches `DELIVERED`.
+`POST /orders` (Gateway) → Order looks up real Catalog pricing for every item in the request, in parallel, writes `PENDING` plus one `order_items` row per line item, publishes `OrderCreated` with the full items array → Inventory reserves each item's stock in sequence, atomically per item, publishes `InventoryReserved` once all items succeed (or compensates and publishes `InventoryReservationFailed` if one fails partway through — see [Cart & Multi-Item Orders](#cart--multi-item-orders)) → Order updates to `STOCK_RESERVED`, publishes `ChargePayment` with the order's real total → Payment simulates a charge, publishes `PaymentSucceeded`/`PaymentFailed` → on success, Order finalizes to `CONFIRMED` and publishes `AssignDelivery` (reusing the warehouse Inventory already reserved against) → Delivery atomically claims the nearest available driver by real Haversine distance, publishes `DeliveryAssigned` → a background simulation moves that driver toward the warehouse every 5 seconds, broadcasting live position updates over WebSocket to any subscribed client, until the delivery reaches `DELIVERED`.
 
 Running alongside all of this, entirely passively: **Notification** hears `OrderCreated`, `PaymentSucceeded`, `PaymentFailed`, and `DeliveryAssigned` the moment they're published, and logs a corresponding customer alert for each — with no code changes required in any of the services actually producing those events.
 
@@ -402,6 +405,65 @@ Then open `http://localhost:16686`, search under the `gateway` service, and open
 
 ---
 
+## Cart & Multi-Item Orders
+
+An order is no longer one product. `PlaceOrder` takes a `warehouseId` and an array of `{ productId, quantity }` items; a server-side, persisted cart (`cart_items`) sits in front of checkout so a future cart-abandonment-recovery job has something real to look at.
+
+### Schema
+
+- **`cart_items`** (Order's DB) — `userId`, `productId`, `quantity`. No price column, by design: the cart never stores or trusts a price, so there's nowhere for a stale one to hide. A unique constraint on `(userId, productId)` makes "add to cart" a safe upsert instead of creating duplicate rows.
+- **`order_items`** (Order's DB, new) — one row per line item, with `unitPrice` **snapshotted from Catalog at checkout**, never re-derived later. Foreign-keyed to `orders.id`.
+- **`orders`** — `productId`/`quantity`/`reservationId` removed (an order can no longer point at one product or one reservation); `subtotal`, `shippingFee`, and `totalAmount` added. `shippingFee` is `0` once `subtotal` clears a configurable free-shipping threshold, otherwise a flat fee.
+- **`reservations`** (Inventory's DB) — already one row per `(orderId, productId)`, so no shape change was needed for multi-item orders; a unique constraint on that pair was added as a safety net against duplicate reservations from a redelivered event.
+
+### The checkout flow
+
+`POST /orders` fetches each item's real price from Catalog in parallel, computes `subtotal`/`shippingFee`/`totalAmount` server-side (the client never sends a price), and inserts the `orders` row plus every `order_items` row in a single `db.transaction` — an order is never left with missing line items. `OrderCreated` now carries the full `items` array instead of one product.
+
+Every reservation-related event contract was simplified in the process: **`InventoryReserved`, `InventoryReservationFailed`, and `ReleaseReservation` all carry just `{ orderId }`, with no reservation ID at all.** Order never tracked which specific reservations existed — it only ever needed to say "this order succeeded" or "this order failed." Inventory owns the reservation details entirely, including looking up and releasing every reservation for an order by `orderId` when asked. Payment's idempotency key changed from a per-reservation ID to the order's own ID, which is simpler and more correct: it's the *order* that must not be double-charged, not any particular reservation underneath it.
+
+### Partial compensation — the riskiest part of this stage
+
+If item 1 of 2 reserves successfully and item 2 has insufficient stock, Inventory's `OrderCreated` handler releases item 1's reservation before publishing a single `InventoryReservationFailed` for the whole order — the customer never ends up with half an order silently holding stock. Items are reserved **sequentially, not in parallel**, specifically so the handler always knows exactly which reservations exist to roll back at the moment a later one fails. If a release itself fails during compensation, it's logged and the loop continues rather than aborting, so one bad release can't leave every other item's stock stuck held.
+
+This path is proven at three levels, not just implemented and assumed correct:
+
+**1. Unit test** — seeds one product with stock and one without, calls the handler directly, and asserts the first item's reservation ends as `RELEASED` (not left `PENDING`), the second item never got a reservation row at all, stock counters are back to their original values, and `InventoryReservationFailed` fired exactly once while `InventoryReserved` never did.
+
+**2. CI** — the same test runs against a real disposable Postgres/RabbitMQ pair on every push; Inventory's workflow is green.
+
+**3. Live, end-to-end, in Docker** — an actual multi-item order was placed with one product in stock and one without. The logs show the real sequence:
+
+```
+{"msg":"item reserved","productId":"8ac6fe5d...","reservationId":"36475f27..."}
+{"msg":"insufficient stock for item, compensating","productId":"1ef965e9..."}
+[rabbitmq] published event: InventoryReservationFailed
+```
+
+Querying the database directly afterward confirmed the reservation was genuinely rolled back, not just logged as if it were:
+
+```
+ product_id                            | status
+----------------------------------------+----------
+ 8ac6fe5d-9f5f-4f6a-ab68-3bae630b2d06   | RELEASED
+
+ quantity_available | quantity_reserved
+---------------------+--------------------
+                  10 |                  0
+```
+
+### The happy path, also verified live
+
+The same request, with both items in stock, was run end-to-end on a single trace: both items reserved → `InventoryReserved` → `STOCK_RESERVED` → `ChargePayment` (`idempotencyKey` equal to the order's own ID) → `PaymentSucceeded` → `CONFIRMED` → `AssignDelivery` → a driver assigned and the live tracking simulation running through to arrival — with Notification firing a correctly-ordered customer alert at every stage along the way, all sharing the same `traceId`.
+
+### Known gaps
+
+- Catalog has no batch price-lookup endpoint yet, so an *n*-item order makes *n* parallel price-lookup calls rather than one batched call. Acceptable for now; worth revisiting alongside Stage 7's real search/recommendations work, which wants batch product lookups too.
+- `getOrderById` still returns only the `orders` row, not its `order_items` — fine for the saga, but a customer-facing order-detail response will need a join.
+- Cart endpoints (add/remove/view) aren't built yet — the `cart_items` table exists and is upsert-safe, but nothing calls it yet. That lands with Stage 5's cart-abandonment-recovery work.
+
+---
+
 ## Tech Stack
 
 | Layer               | Technology                                                                       | Purpose                                                                              |
@@ -544,6 +606,7 @@ for d in services/*/; do (cd "$d" && npm test); done
 4. **Abuse protection and access control at the edge** — a distributed sliding-window limiter in Valkey rejects excess requests before they reach any service, and role is carried through the request path so a valid login alone doesn't grant admin actions. _(Gateway/Catalog — both verified live.)_
 5. **Correctness under horizontal scaling** — the same zero-oversell guarantee holds when the guaranteeing service is scaled to multiple independent processes, and background jobs coordinate via a Postgres advisory lock so scaling never causes duplicate work. _(Inventory — verified live; Delivery has the identical fix applied.)_
 6. **Observability across service boundaries** — a single order's journey, including the synchronous Gateway → Order → Catalog hop, is visible as one connected trace across all 7 services, and every log line anywhere in the system can be correlated back to that trace by `traceId`. _(All 7 services — verified live, 76 spans per order.)_
+7. **Partial failure inside a single order** — a multi-item order where one item can't be reserved doesn't fail atomically or leave the others silently held: Inventory reserves sequentially, rolls back everything already reserved the moment one item fails, and reports exactly one outcome for the whole order. _(Order/Inventory — verified at the unit-test, CI, and live-Docker level; see [Cart & Multi-Item Orders](#cart--multi-item-orders).)_
 
 ---
 
@@ -604,6 +667,22 @@ for d in services/*/; do (cd "$d" && npm test); done
 - [x] Multi-instance proof + advisory-lock fix for background jobs — Inventory scaled to 3 replicas, 100-request load test re-verified across processes, expiry/tracking jobs now advisory-lock-coordinated so only one instance runs per cycle
 - [x] Structured logging (pino) with OpenTelemetry trace correlation — rolled out across all 7 services, Gateway and Catalog additionally brought into tracing for the first time
 - [x] Shared `errorHandler.ts` cleaned up across all 7 services — single structured log line per error, no raw stack trace on expected 4xx errors
+
+### Stage 4 — Cart Foundation
+
+- [x] `cart_items` table (server-side, persisted, upsert-safe via a `(userId, productId)` unique constraint)
+- [x] `order_items` table, with `unitPrice` snapshotted from Catalog at checkout
+- [x] `orders` schema updated — single-product columns removed, `subtotal`/`shippingFee`/`totalAmount` added
+- [x] `PlaceOrder` accepts multiple items, prices them in parallel against Catalog, inserts the order and its line items in one transaction
+- [x] Free shipping threshold, computed alongside `subtotal`
+- [x] `OrderCreated`, `InventoryReserved`, `InventoryReservationFailed`, and `ReleaseReservation` event contracts simplified to carry `orderId` only — no reservation IDs tracked by Order
+- [x] Payment idempotency key changed from a per-reservation ID to the order's own ID
+- [x] Partial-compensation logic in Inventory's `OrderCreated` handler — sequential per-item reservation, full rollback of already-succeeded items on a later failure, exactly one failure event per order
+- [x] Dedicated Vitest coverage for the partial-compensation path, plus a happy-path multi-item test
+- [x] CI green for both Order and Inventory against the new schema
+- [x] Full saga proven live in Docker for both the failure path (one item released, stock restored, confirmed by direct DB query) and the happy path (both items reserved, paid, delivered, tracked live) — see [Cart & Multi-Item Orders](#cart--multi-item-orders)
+- [ ] Cart endpoints (add/remove/view) — table exists, nothing calls it yet; lands with Stage 5
+- [ ] Catalog batch price-lookup endpoint — Order currently makes one parallel call per item
 
 ### Phase 5 — Deployment
 
