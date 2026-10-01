@@ -51,9 +51,17 @@ const removeFromCart = async (userId: string, productId: string) => {
       and(eq(cartItems.productId, productId), eq(cartItems.userId, userId)),
     )
     .returning();
-  if (!cartItems) {
+  if (!cartItem) {
     throw ApiError.notFound("Item not found in cart");
   }
   return cartItem;
 };
-const getCart = async () => {};
+const getCart = async (userId: string) => {
+  const cart = await db
+    .select()
+    .from(cartItems)
+    .where(eq(cartItems.userId, userId));
+  return cart;
+};
+
+export { addToCart, updateCartItemQuantity, removeFromCart, getCart };
