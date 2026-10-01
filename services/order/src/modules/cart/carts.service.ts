@@ -44,5 +44,16 @@ const updateCartItemQuantity = async (
   }
   return cartItem;
 };
-const removeFromCart = async () => {};
+const removeFromCart = async (userId: string, productId: string) => {
+  const [cartItem] = await db
+    .delete(cartItems)
+    .where(
+      and(eq(cartItems.productId, productId), eq(cartItems.userId, userId)),
+    )
+    .returning();
+  if (!cartItems) {
+    throw ApiError.notFound("Item not found in cart");
+  }
+  return cartItem;
+};
 const getCart = async () => {};
