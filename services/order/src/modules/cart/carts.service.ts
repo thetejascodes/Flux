@@ -1,8 +1,8 @@
 import { cartItems } from "../../common/db/schema.js";
 import { db } from "../../common/db/index.js";
 import ApiError from "../../common/utils/api-error.js";
-import type { AddCartItemInput } from "./dto/cart.dto.js";
-import { sql } from "drizzle-orm";
+import type { AddCartItemInput, UpdateCartItemInput } from "./dto/cart.dto.js";
+import { sql, and, eq } from "drizzle-orm";
 
 const addToCart = async (userId: string, input: AddCartItemInput) => {
   const { productId, quantity } = input;
@@ -25,6 +25,24 @@ const addToCart = async (userId: string, input: AddCartItemInput) => {
   return cartItem;
 };
 
-const updateCartItemQuantity = async () => {};
+const updateCartItemQuantity = async (
+  userId: string,
+  productId: string,
+  input: UpdateCartItemInput,
+) => {
+  const [cartItem] = await db
+    .update(cartItems)
+    .set({
+      quantity: input.quantity,
+    })
+    .where(
+      and(eq(cartItems.userId, userId), eq(cartItems.productId, productId)),
+    )
+    .returning();
+  if (!cartItem) {
+    throw ApiError.notFound("Item not found in cart");
+  }
+  return cartItem;
+};
 const removeFromCart = async () => {};
 const getCart = async () => {};
