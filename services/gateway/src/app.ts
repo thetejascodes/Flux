@@ -39,6 +39,8 @@ app.use(
   ordersLimiter,
   proxyTo(config.services.orderUrl),
 );
+app.use("/cart", isAuthenticated, proxyTo(config.services.orderUrl));
+
 // app.use("/payments",  isAuthenticated, proxyTo(config.services.paymentUrl));
 // app.use("/delivery",  isAuthenticated, proxyTo(config.services.deliveryUrl));
 
