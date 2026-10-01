@@ -1,6 +1,7 @@
 import express from "express";
 import errorHandler from "./common/middleware/errorHandler.js";
 import orderRoutes from "./modules/order/orders.routes.js";
+import cartRoutes from "./modules/cart/cart.routes.js";
 import { db } from "./common/db/index.js";
 import { sql } from "drizzle-orm";
 import { getChannel } from "./common/events/connection.js";
@@ -32,6 +33,7 @@ app.get("/health", async (req, res) => {
 });
 
 app.use("/", orderRoutes);
+app.use("/cart", cartRoutes);
 
 app.use(errorHandler);
 
