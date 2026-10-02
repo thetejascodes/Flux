@@ -35,7 +35,9 @@ Structured logging (pino) now stamps the active OpenTelemetry `traceId`/`spanId`
 
 **Notification Service** listens to the same RabbitMQ exchange every other service publishes to — `OrderCreated`, `PaymentSucceeded`, `PaymentFailed`, `DeliveryAssigned` — and logs a customer-facing alert for each, idempotently (a unique constraint on `orderId` + notification type prevents duplicate alerts if an event is redelivered). It currently runs in stub mode (console + database log, same pattern as Gateway's own OTP stub mode) rather than sending real SMS; the Twilio integration itself is fully wired and ready, gated behind a single config flag, waiting only on a phone-number-resolution step that hasn't been built yet.
 
-**Stage 4 — cart and multi-item orders — is fully complete.** Orders are no longer single-product: a `PlaceOrder` request now takes a `warehouseId` and an array of `{ productId, quantity }` items, priced against Catalog in parallel, snapshotted into a new `order_items` table, and summed into `subtotal` + `shippingFee` (a free-shipping threshold) + `totalAmount` on `orders`. A server-side, persisted `cart_items` table (upsert-safe via a `(userId, productId)` unique constraint) backs future cart abandonment recovery. The riskiest part of this stage — partial compensation, where one item in a multi-item order fails to reserve after others already succeeded — is implemented in Inventory's `OrderCreated` handler: it reserves items sequentially, and if item N fails, releases every item reserved before it and publishes exactly one `InventoryReservationFailed` for the whole order. This is proven at three levels: a dedicated Vitest suite, a green CI run, and a real live Docker run (documented in [Cart & Multi-Item Orders](#cart--multi-item-orders)) showing an actual reservation created, then actually released, stock actually restored — not just logged. The equivalent happy path (both items reserved, payment charged, delivery assigned, all the way to a live driver simulation) was also verified live on the same trace.
+**Stage 4 — cart and multi-item orders — is fully complete.** Orders are no longer single-product: a `PlaceOrder` request now takes a `warehouseId` and an array of `{ productId, quantity }` items, priced against Catalog in parallel, snapshotted into a new `order_items` table, and summed into `subtotal` + `shippingFee` (a free-shipping threshold) + `totalAmount` on `orders`. The riskiest part of this stage — partial compensation, where one item in a multi-item order fails to reserve after others already succeeded — is implemented in Inventory's `OrderCreated` handler: it reserves items sequentially, and if item N fails, releases every item reserved before it and publishes exactly one `InventoryReservationFailed` for the whole order. This is proven at three levels: a dedicated Vitest suite, a green CI run, and a real live Docker run (documented in [Cart & Multi-Item Orders](#cart--multi-item-orders)) showing an actual reservation created, then actually released, stock actually restored — not just logged. The equivalent happy path (both items reserved, payment charged, delivery assigned, all the way to a live driver simulation) was also verified live on the same trace.
+
+A full, server-side, persisted cart now sits in front of checkout: `GET`/`POST /cart` and `PATCH`/`DELETE /cart/:productId`, mounted through Gateway, upsert-safe via a `(userId, productId)` unique constraint, and scoped so one user can never read or alter another's cart. Building it live (not just unit-testing it) surfaced two integration bugs invisible to either Order's own test suite or CI alone — a proxy path-stripping issue and a route-mounting collision inside Order — both fixed and documented in [Cart & Multi-Item Orders](#cart--multi-item-orders).
 
 ADR-0001 through ADR-0005 are complete and accepted. **Phases 0 through 3 are fully closed**, and Phase 2's previously-open test-coverage gaps are now closed as part of the 70-test hardening pass. A frontend dashboard (optional, deprioritized), a case study write-up, and deployment remain, alongside the staged hardening/feature plan now underway — **Stage 5 (cart abandonment recovery, reviews, loyalty/rewards, reorder/subscriptions) is next.**
 
@@ -155,6 +157,8 @@ services/<name>/
 `common/logger.ts` is a thin pino wrapper, identical across all 7 services: it stamps the active OpenTelemetry `traceId`/`spanId` (read via `trace.getActiveSpan()`) onto every `info`/`warn`/`error`/`debug` call, so any log line can be correlated back to its Jaeger trace. See [Structured Logging & Tracing](#structured-logging--tracing).
 
 Delivery additionally has `common/websocket/websocket.ts` (a thin Socket.IO wrapper with per-order rooms) and `modules/deliveries/deliveries.tracking.ts` (the periodic simulation that moves an assigned driver toward the destination and broadcasts progress). Notification and Payment are both purely event-driven, with no HTTP routes at all beyond an internal `/health`.
+
+Order is the one service with two feature modules rather than one: `modules/order/` (order lifecycle, the saga driver) and `modules/cart/` (pre-checkout cart state), each with its own schema file, DTO, service, controller, routes, and test suite — kept separate because they're genuinely different concerns sharing one database, not one feature split in two for no reason. `common/db/schema.ts` re-exports both.
 
 Gateway's auth module is the one deliberate exception to the "one `.service.test.ts` per feature" convention above: its OTP flow splits `otp.service.ts` (rate-limiting, verification, session issuance) from `otp.ts` (the thin Twilio wrapper), each with its own dedicated suite — `otp.service.test.ts` and `otp.test.ts` — since mocking the Twilio call inside the service tests would leave the wrapper itself unverified. `auth.middleware.test.ts` covers the proxy-path token check separately again, since it's a request-handling concern rather than a token-issuance one.
 
@@ -456,11 +460,31 @@ Querying the database directly afterward confirmed the reservation was genuinely
 
 The same request, with both items in stock, was run end-to-end on a single trace: both items reserved → `InventoryReserved` → `STOCK_RESERVED` → `ChargePayment` (`idempotencyKey` equal to the order's own ID) → `PaymentSucceeded` → `CONFIRMED` → `AssignDelivery` → a driver assigned and the live tracking simulation running through to arrival — with Notification firing a correctly-ordered customer alert at every stage along the way, all sharing the same `traceId`.
 
+### Cart endpoints
+
+`cart_items` is no longer just a table waiting for a consumer — the full CRUD surface is live, mounted through Gateway at `/cart`:
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| `GET` | `/cart` | Returns all items for the authenticated user (an empty array for an empty cart, not an error) |
+| `POST` | `/cart` | Adds a product; if it's already in the cart, **increments** the existing quantity via a single atomic `INSERT ... ON CONFLICT DO UPDATE` rather than a check-then-write |
+| `PATCH` | `/cart/:productId` | Sets quantity to an exact value (not additive) |
+| `DELETE` | `/cart/:productId` | Removes the item |
+
+Every mutation is scoped to `(userId, productId)` in its `WHERE` clause — update and remove both return a clean `404` if the product isn't in *that user's* cart, and a dedicated test proves user A cannot alter user B's cart row even by guessing a `productId`. `addToCart`'s upsert reuses the same unique constraint `cart_items` was built with, so adding the same product twice never risks the check-then-insert race condition `reserveStock` was designed to avoid.
+
+**Two real integration bugs were caught here, neither visible from unit tests alone:**
+
+1. **Gateway's proxy strips the mount path before forwarding.** `app.use("/cart", proxyTo(...))` meant Order received a bare `/`, not `/cart` — which happened to work for `/orders` (mounted at root in Order) but broke `/cart` (mounted at `/cart` in Order) silently. Fixed by giving `proxyTo` an optional second argument that re-adds the stripped prefix via `pathRewrite`, used only where the downstream service actually expects it.
+2. **A route-ordering collision inside Order.** `orderRoutes` was mounted at `/` with a `GET /:id` wildcard, registered *before* `cartRoutes`. A `GET /cart` request matched that wildcard first (`id = "cart"`), reached `orders.service.ts`, and crashed on `invalid input syntax for type uuid: "cart"` before Express ever reached `cartRoutes`. Fixed by mounting `cartRoutes` before `orderRoutes`.
+
+Both were only caught because every cart operation was tested through the real Gateway → Order path, not just against Order's own test suite — exactly the gap unit tests and even CI can't close on their own.
+
 ### Known gaps
 
 - Catalog has no batch price-lookup endpoint yet, so an *n*-item order makes *n* parallel price-lookup calls rather than one batched call. Acceptable for now; worth revisiting alongside Stage 7's real search/recommendations work, which wants batch product lookups too.
 - `getOrderById` still returns only the `orders` row, not its `order_items` — fine for the saga, but a customer-facing order-detail response will need a join.
-- Cart endpoints (add/remove/view) aren't built yet — the `cart_items` table exists and is upsert-safe, but nothing calls it yet. That lands with Stage 5's cart-abandonment-recovery work.
+- Cart items aren't validated against Catalog at add-to-cart time — a nonexistent `productId` can sit in a cart silently; checkout is still the single source of truth that catches it (`placeOrder` already 400s on an unknown product).
 
 ---
 
@@ -559,7 +583,7 @@ npm test
 | **Gateway**      | 5      | Email/password, OTP, Google OAuth, shared token issuance, proxy-path token validation |
 | **Inventory**    | 2      | Zero-oversell concurrency, background expiry job, multi-item partial-compensation (and its happy-path counterpart) |
 | **Payment**      | 1      | Idempotency, scoped by key vs. by order                                               |
-| **Order**        | 1      | Real-pricing derivation, saga handler correctness across all four handlers            |
+| **Order**        | 2      | Real-pricing derivation, saga handler correctness across all four handlers, cart upsert/scoping/empty-cart behavior |
 | **Delivery**     | 1      | Concurrent claim, transaction rollback, nearest-driver selection                      |
 | **Notification** | 1      | Idempotency per order + notification type                                             |
 | **Catalog**      | 1      | Product creation, lookup, filtering, pagination, updates, and price precision         |
@@ -572,7 +596,7 @@ npm test
 
 **Payment** — idempotency is proven with three cases: the same `idempotencyKey` called twice returns the same payment row and the same outcome rather than re-rolling a fresh charge result, while a different `idempotencyKey` against the same `orderId` correctly creates a second, independent payment row — confirming the unique constraint is scoped to the key, not the order, so a legitimate retry after a failed attempt isn't blocked. The event handler (`handleChargePayment`) itself has also been hardened: a validation failure now publishes a compensating `PaymentFailed` instead of silently dropping the event, and a thrown error from `chargePayment` is now caught and handled rather than left unguarded.
 
-**Order** — pricing is tested against a mocked Catalog response for both a single item (catching a real rounding bug where `.toFixed()` with no argument silently collapsed `99.98` to `100`) and multiple different-priced items (confirming `subtotal` sums correctly and each item lands in `order_items` with its own snapshotted price); a Catalog-unreachable case confirms a clean error instead of an unhandled network exception; and all four saga handlers — `InventoryReserved`, `InventoryReservationFailed`, `PaymentSucceeded`, and `PaymentFailed` — are tested as actually-imported, directly-called functions (not a re-statement of their own inputs), confirming `InventoryReserved` uses the order's own ID as Payment's idempotency key — stable across a redelivery of the same event, unlike the earlier per-reservation key it replaced.
+**Order** — pricing is tested against a mocked Catalog response for both a single item (catching a real rounding bug where `.toFixed()` with no argument silently collapsed `99.98` to `100`) and multiple different-priced items (confirming `subtotal` sums correctly and each item lands in `order_items` with its own snapshotted price); a Catalog-unreachable case confirms a clean error instead of an unhandled network exception; and all four saga handlers — `InventoryReserved`, `InventoryReservationFailed`, `PaymentSucceeded`, and `PaymentFailed` — are tested as actually-imported, directly-called functions (not a re-statement of their own inputs), confirming `InventoryReserved` uses the order's own ID as Payment's idempotency key — stable across a redelivery of the same event, unlike the earlier per-reservation key it replaced. A second suite covers the cart module: `addToCart`'s upsert increments an existing row's quantity rather than creating a duplicate; `updateCartItemQuantity` sets an exact value rather than adding to it; both `updateCartItemQuantity` and `removeFromCart` throw a clean not-found for a nonexistent item and, critically, for an item that exists but belongs to a different user — proving the scoping, not just the happy path; and `getCart` returns an empty array rather than an error for a user with nothing in their cart.
 
 **Catalog** — the 12-test suite covers product creation with exact two-decimal price storage, lookup of existing and nonexistent products, unfiltered and category-filtered listing, pagination across multiple pages, empty filter results, partial updates that preserve unspecified fields, price updates without floating-point corruption, and not-found handling for updates.
 
@@ -689,7 +713,8 @@ for d in services/*/; do (cd "$d" && npm test); done
 - [x] Dedicated Vitest coverage for the partial-compensation path, plus a happy-path multi-item test
 - [x] CI green for both Order and Inventory against the new schema
 - [x] Full saga proven live in Docker for both the failure path (one item released, stock restored, confirmed by direct DB query) and the happy path (both items reserved, paid, delivered, tracked live) — see [Cart & Multi-Item Orders](#cart--multi-item-orders)
-- [ ] Cart endpoints (add/remove/view) — table exists, nothing calls it yet; lands with Stage 5
+- [x] Cart endpoints (`GET`/`POST /cart`, `PATCH`/`DELETE /cart/:productId`) — upsert-safe add, exact-set update, user-scoped on every mutation, dedicated Vitest coverage, and verified live end-to-end through the real Gateway → Order path
+- [x] Two integration bugs found and fixed during live cart testing: Gateway's proxy stripping the `/cart` mount path before forwarding, and a route-mounting collision in Order where `orderRoutes`' `GET /:id` wildcard swallowed `/cart` requests before `cartRoutes` could match them
 - [ ] Catalog batch price-lookup endpoint — Order currently makes one parallel call per item
 
 ### Phase 5 — Deployment
