@@ -1,9 +1,12 @@
 import { createProxyMiddleware } from "http-proxy-middleware";
 
-const proxyTo = (target: string) => {
+const proxyTo = (target: string, mountPath?: string) => {
   return createProxyMiddleware({
     target,
     changeOrigin: true,
+    ...(mountPath && {
+      pathRewrite: (path: string) => `${mountPath}${path}`,
+    }),
     on: {
       proxyReq: (proxyReq, req: any) => {
         if (req.userId) {
