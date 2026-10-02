@@ -1,17 +1,20 @@
+<a id="top"></a>
 <div align="center">
 
-# Flux
+<img src="assets/banner.svg" alt="Flux — One order. Seven services. Zero excuses." width="100%"/>
 
-**One order. Seven services. Zero excuses.**
+<br/><br/>
 
-A distributed quick-commerce platform built as a monorepo of independent services, with no shared database.
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-20-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
+![Express](https://img.shields.io/badge/Express-5-000000?style=for-the-badge&logo=express&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-per--service-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
 
-![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
-![Node.js](https://img.shields.io/badge/Node.js-20-339933?logo=nodedotjs&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-per--service-4169E1?logo=postgresql&logoColor=white)
-![RabbitMQ](https://img.shields.io/badge/RabbitMQ-event%20bus-FF6600?logo=rabbitmq&logoColor=white)
-![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-Jaeger-425CC7?logo=opentelemetry&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-70%20passing-brightgreen)
+![RabbitMQ](https://img.shields.io/badge/RabbitMQ-event%20bus-FF6600?style=for-the-badge&logo=rabbitmq&logoColor=white)
+![Valkey](https://img.shields.io/badge/Valkey-Redis--compatible-DC382D?style=for-the-badge&logo=redis&logoColor=white)
+![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-Jaeger-425CC7?style=for-the-badge&logo=opentelemetry&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-70%20passing-22c55e?style=for-the-badge&logo=vitest&logoColor=white)
 
 ![Gateway CI](https://github.com/thetejascodes/Flux/actions/workflows/gateway.yml/badge.svg)
 ![Catalog CI](https://github.com/thetejascodes/Flux/actions/workflows/catalog.yml/badge.svg)
@@ -21,6 +24,22 @@ A distributed quick-commerce platform built as a monorepo of independent service
 ![Delivery CI](https://github.com/thetejascodes/Flux/actions/workflows/delivery.yml/badge.svg)
 ![Notification CI](https://github.com/thetejascodes/Flux/actions/workflows/notification.yml/badge.svg)
 
+<br/>
+
+**[Architecture](#architecture)** &nbsp;·&nbsp; **[Quick Start](#quick-start)** &nbsp;·&nbsp; **[Testing](#testing)** &nbsp;·&nbsp; **[Hard Problems](#core-hard-problems)** &nbsp;·&nbsp; **[Roadmap](#roadmap)** &nbsp;·&nbsp; **[ADRs](#architecture-decisions)**
+
+<br/>
+
+<table>
+  <tr>
+    <td align="center" width="160"><h2>7</h2><sub>independent<br/>services</sub></td>
+    <td align="center" width="160"><h2>70</h2><sub>automated<br/>tests</sub></td>
+    <td align="center" width="160"><h2>76</h2><sub>spans in one<br/>connected trace</sub></td>
+    <td align="center" width="160"><h2>1 / 100</h2><sub>oversell-proof<br/>under load</sub></td>
+    <td align="center" width="160"><h2>0</h2><sub>shared<br/>databases</sub></td>
+  </tr>
+</table>
+
 </div>
 
 ---
@@ -29,7 +48,12 @@ Flux is a distributed quick-commerce platform built as a monorepo of independent
 
 Most portfolio e-commerce projects are a product table, a cart, and a checkout form. Flux exists to demonstrate something different: that a single engineer can design and reason about the same category of hard problems that companies like Amazon and Flipkart solve at scale, without needing a team of thousands to prove it.
 
-## At a Glance
+<a id="at-a-glance"></a>
+
+## 📊 At a Glance
+
+> [!TIP]
+> New here? Read **At a Glance → Architecture → Quick Start**. Everything else is deep-dive evidence for the claims made there.
 
 | | |
 | --- | --- |
@@ -42,9 +66,13 @@ Most portfolio e-commerce projects are a product table, a cart, and a checkout f
 | **Architecture decisions** | ADR-0001 through ADR-0005, accepted |
 | **Up next** | Stage 5 — cart abandonment recovery, reviews, loyalty/rewards, reorder/subscriptions |
 
+<p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
+
 ---
 
-## Table of Contents
+<a id="table-of-contents"></a>
+
+## 🧭 Table of Contents
 
 **Overview**
 - [Project Status](#project-status)
@@ -76,11 +104,17 @@ Most portfolio e-commerce projects are a product table, a cart, and a checkout f
 - [Non-Goals (for v1)](#non-goals-for-v1)
 - [Architecture Decisions](#architecture-decisions)
 
+<p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
+
 ---
 
-## Project Status
+<a id="project-status"></a>
+
+## 📌 Project Status
 
 ✅ **All seven planned services are complete, and the full hardening test suite is done.** Gateway, Catalog, Inventory, Order, Payment, Delivery, and Notification are all built, dockerized, and proven working end-to-end, including the full choreographed saga (success and compensation paths), real Catalog-based pricing, geospatial nearest-driver assignment with live WebSocket tracking, event-driven customer notifications, and distributed tracing across every hop.
+
+**Overall progress** &nbsp; `▰▰▰▰▰▰▰▰▱▱` &nbsp; **Stages 1–4 complete · Stage 5 next · deployment pending**
 
 | Stage | Scope | Status |
 | --- | --- | :---: |
@@ -142,9 +176,13 @@ A full, server-side, persisted cart now sits in front of checkout: `GET`/`POST /
 
 A frontend dashboard (optional, deprioritized), a case study write-up, and deployment remain, alongside the staged hardening/feature plan now underway — **Stage 5 (cart abandonment recovery, reviews, loyalty/rewards, reorder/subscriptions) is next.**
 
+<p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
+
 ---
 
-## What Makes This Different
+<a id="what-makes-this-different"></a>
+
+## ✨ What Makes This Different
 
 | Principle | What it means in Flux |
 | --- | --- |
@@ -157,9 +195,13 @@ A frontend dashboard (optional, deprioritized), a case study write-up, and deplo
 | **Built for quick-commerce, not generic e-commerce** | Multiple dark-store/warehouse locations, nearest-driver assignment by real distance calculation, and live delivery tracking over WebSocket. |
 | **Observable by design** | A single order's journey across every service it touches — including the entry point at the Gateway and the synchronous Catalog price lookup — is visible as one connected trace, not seven separate log streams. |
 
+<p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
+
 ---
 
-## Architecture
+<a id="architecture"></a>
+
+## 🏗️ Architecture
 
 Each service owns its own PostgreSQL database. Synchronous calls are used only for two cases: Gateway's authenticated proxy, and Order's single price lookup from Catalog at placement time. Everything else — order state changes, payment confirmations, delivery assignment, live position updates, customer notifications — flows as events through RabbitMQ, or in Delivery's case, out to the browser over WebSocket.
 
@@ -180,6 +222,13 @@ flowchart LR
     DEL ==>|WebSocket| Client
     GW --- VK[(Valkey)]
     INV --- VK
+
+    classDef svc fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e0e7ff;
+    classDef infra fill:#022c22,stroke:#34d399,stroke-width:2px,color:#d1fae5;
+    classDef client fill:#4a044e,stroke:#f472b6,stroke-width:2px,color:#fce7f3;
+    class GW,CAT,ORD,INV,PAY,DEL,NOT svc
+    class MQ,DLQ,VK infra
+    class Client client
 ```
 
 ### The full proven saga, from the Gateway inward
@@ -233,9 +282,13 @@ On payment failure: Order publishes `ReleaseReservation` instead, and Inventory 
 
 See [ADR-0004](docs/adr/0004-saga-choreography.md) for the choreography-vs-orchestration reasoning, and [ADR-0005](docs/adr/0005-geospatial-routing.md) for the geospatial routing decision.
 
+<p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
+
 ---
 
-## Repository Structure
+<a id="repository-structure"></a>
+
+## 📁 Repository Structure
 
 A single monorepo, not seven separate repos — each service is still fully independent (own dependencies, own database, own Dockerfile), just co-located for easier solo development.
 
@@ -294,9 +347,13 @@ services/<name>/
 - **Order** is the one service with two feature modules rather than one: `modules/order/` (order lifecycle, the saga driver) and `modules/cart/` (pre-checkout cart state), each with its own schema file, DTO, service, controller, routes, and test suite — kept separate because they're genuinely different concerns sharing one database, not one feature split in two for no reason. `common/db/schema.ts` re-exports both.
 - **Gateway's auth module** is the one deliberate exception to the "one `.service.test.ts` per feature" convention above: its OTP flow splits `otp.service.ts` (rate-limiting, verification, session issuance) from `otp.ts` (the thin Twilio wrapper), each with its own dedicated suite — `otp.service.test.ts` and `otp.test.ts` — since mocking the Twilio call inside the service tests would leave the wrapper itself unverified. `auth.middleware.test.ts` covers the proxy-path token check separately again, since it's a request-handling concern rather than a token-issuance one.
 
+<p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
+
 ---
 
-## Services & Build Status
+<a id="services--build-status"></a>
+
+## 🧩 Services & Build Status
 
 | Service | Status | Responsibility |
 | --- | :---: | --- |
@@ -308,9 +365,13 @@ services/<name>/
 | **Delivery** | ✅ Complete | Nearest-driver assignment (Haversine, atomically claimed), live position simulation, WebSocket broadcast, dead-letter-backed |
 | **Notification** | ✅ Complete | Event-driven customer alerts on order lifecycle changes, idempotent per order+type, Twilio-ready but stubbed, dead-letter-backed |
 
+<p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
+
 ---
 
-## Authentication
+<a id="authentication"></a>
+
+## 🔐 Authentication
 
 Gateway does **not** use full OpenID Connect — that's the right tool for an external identity provider serving multiple third-party clients, not a single product's internal services. Instead, Gateway supports three login methods, all converging on one shared token-issuing function:
 
@@ -322,9 +383,13 @@ Gateway does **not** use full OpenID Connect — that's the right tool for an ex
 
 All three produce the same JWT (RS256, 15-minute expiry) + opaque refresh token pair, and the JWT payload carries both `userId` and `role`. Refresh tokens are random values, hashed and stored server-side in a `sessions` table, and rotate on every use — so they can be revoked instantly, unlike a signed refresh JWT. The Gateway validates every incoming request's token before proxying it to a downstream service, and forwards the verified user's ID and role via `x-user-id` and `x-user-role` headers — services trust these headers rather than re-authenticating every call (see [Role Enforcement](#role-enforcement)). All three login paths, refresh rotation, and the proxy-path `isAuthenticated` middleware itself are covered by Vitest (see [Testing](#testing)). See [ADR-0002](docs/adr/0002-authentication-strategy.md) for the full reasoning.
 
+<p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
+
 ---
 
-## Rate Limiting
+<a id="rate-limiting"></a>
+
+## 🛡️ Rate Limiting
 
 The Gateway throttles clients with a **Valkey-backed sliding-window limiter**, applied as middleware before requests are proxied downstream.
 
@@ -333,7 +398,8 @@ The Gateway throttles clients with a **Valkey-backed sliding-window limiter**, a
 | `/api/auth/*` | 10 requests / 60 seconds | Client IP | ✅ Verified live |
 | `/orders` | 30 requests / 60 seconds | Client IP | ✅ Verified live |
 
-> **Note:** OTP requests have their own separate, stricter limit (3/hour per phone number) enforced inside the OTP service — a different mechanism from the Gateway limiter described here.
+> [!NOTE]
+> OTP requests have their own separate, stricter limit (3/hour per phone number) enforced inside the OTP service — a different mechanism from the Gateway limiter described here.
 
 ### How it works
 
@@ -362,9 +428,13 @@ Because state lives in Valkey rather than process memory, the limit holds across
 - [ ] No automated Vitest coverage for the rate-limiter middleware yet.
 - [ ] Behind a reverse proxy or load balancer in production, every user could appear to share the proxy's IP. The Gateway needs `trust proxy` configured (e.g. `app.set('trust proxy', ...)`) so the real client IP is read from `X-Forwarded-For`. Tracked under Phase 5.
 
+<p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
+
 ---
 
-## Role Enforcement
+<a id="role-enforcement"></a>
+
+## 🔑 Role Enforcement
 
 A valid JWT proves identity; it does not by itself grant elevated permissions. Flux carries `role` through the whole request path and enforces it at the service that owns the guarded action.
 
@@ -384,9 +454,13 @@ A valid JWT proves identity; it does not by itself grant elevated permissions. F
 
 Currently only Catalog's product writes are gated this way; other services trust `x-user-id` alone for now, since nothing else in the saga yet needs a role check.
 
+<p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
+
 ---
 
-## Health Checks
+<a id="health-checks"></a>
+
+## 🩺 Health Checks
 
 Every service's `/health` endpoint performs a real dependency check instead of returning a hardcoded response.
 
@@ -406,9 +480,13 @@ A passing response looks like:
 If either check fails, the endpoint returns `503` with `status: "degraded"` and a per-check breakdown showing exactly which dependency is down — verified live across all 7 rebuilt services.
 
 
+<p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
+
 ---
 
-## CI Pipeline
+<a id="ci-pipeline"></a>
+
+## ⚙️ CI Pipeline
 
 Each service has its own GitHub Actions workflow under `.github/workflows/`, triggered only on pushes that touch that service's own path (`services/<name>/**`) — so an unrelated service's change never blocks or reruns a service that didn't change.
 
@@ -430,13 +508,18 @@ Gateway's workflow has one addition: since `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY` ar
 | **Catalog** | ✅ | Postgres |
 | **Gateway** | ✅ | Postgres, Valkey (+ generated JWT keypair) |
 
+> [!IMPORTANT]
 > **A real bug this caught:** Inventory's concurrency test hung indefinitely in CI until a `valkey` service container was added — `reserveStock` writes to Redis after every successful reservation, and `ioredis` doesn't fail fast on a missing connection, so all 100 concurrent test requests silently blocked forever rather than erroring. Raising the test timeout didn't fix it; the actual fix was giving CI the dependency the code genuinely needs. This is exactly the class of bug a real CI environment is meant to surface before it reaches someone else's machine.
 
 No `lint` step yet — none of the services currently define a `lint` script; ESLint config is a candidate for a later pass.
 
+<p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
+
 ---
 
-## Multi-Instance & Scaling
+<a id="multi-instance--scaling"></a>
+
+## 📈 Multi-Instance & Scaling
 
 Flux's core concurrency guarantee — no overselling under simultaneous reservation attempts — holds not just within one process, but across multiple independent instances of the same service.
 
@@ -496,11 +579,16 @@ docker compose logs -f inventory   # watch for a single instance logging the swe
 docker compose up -d --scale inventory=1   # scale back down afterward
 ```
 
-> **Note:** Inventory's `docker-compose.yml` entry has no fixed host port mapping (unlike most other services) specifically so it can be scaled — other services reach it over the Docker network at `http://inventory:4002`, which resolves correctly regardless of replica count.
+> [!NOTE]
+> Inventory's `docker-compose.yml` entry has no fixed host port mapping (unlike most other services) specifically so it can be scaled — other services reach it over the Docker network at `http://inventory:4002`, which resolves correctly regardless of replica count.
+
+<p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
 
 ---
 
-## Structured Logging & Tracing
+<a id="structured-logging--tracing"></a>
+
+## 🔭 Structured Logging & Tracing
 
 Every service logs through the same thin `common/logger.ts` pino wrapper, and every service — including Gateway and Catalog, which had neither tracing nor structured logging until this stage — is wired into OpenTelemetry + Jaeger.
 
@@ -542,9 +630,13 @@ docker compose logs gateway --tail 20
 
 Then open `http://localhost:16686`, search under the `gateway` service, and open the most recent trace — it should start at the Gateway's inbound request and span all 7 services.
 
+<p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
+
 ---
 
-## Cart & Multi-Item Orders
+<a id="cart--multi-item-orders"></a>
+
+## 🛒 Cart & Multi-Item Orders
 
 An order is no longer one product. `PlaceOrder` takes a `warehouseId` and an array of `{ productId, quantity }` items; a server-side, persisted cart (`cart_items`) sits in front of checkout so a future cart-abandonment-recovery job has something real to look at.
 
@@ -623,9 +715,13 @@ Both were only caught because every cart operation was tested through the real G
 - [ ] `getOrderById` still returns only the `orders` row, not its `order_items` — fine for the saga, but a customer-facing order-detail response will need a join.
 - [ ] Cart items aren't validated against Catalog at add-to-cart time — a nonexistent `productId` can sit in a cart silently; checkout is still the single source of truth that catches it (`placeOrder` already 400s on an unknown product).
 
+<p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
+
 ---
 
-## Tech Stack
+<a id="tech-stack"></a>
+
+## 🧰 Tech Stack
 
 | Layer | Technology | Purpose |
 | --- | --- | --- |
@@ -644,9 +740,13 @@ Both were only caught because every cart operation was tested through the real G
 | **CI** | GitHub Actions, one workflow per service | Build + migrate + test against real disposable infra on every push |
 | **Dev Tooling** | Docker Compose, tsc-watch | Local multi-service infrastructure |
 
+<p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
+
 ---
 
-## Quick Start
+<a id="quick-start"></a>
+
+## 🚀 Quick Start
 
 ### 1. Start everything
 
@@ -657,6 +757,7 @@ docker compose ps
 
 Confirm all containers (Postgres, Valkey, RabbitMQ, Jaeger, and all seven services) show `Up`.
 
+> [!TIP]
 > If you're rebuilding after changing source (not just config), `docker compose up -d --build` can reuse an already-running container instead of replacing it — run `docker compose down` first, then `docker compose build --no-cache <service>` and `docker compose up -d`, if you need to guarantee a clean rebuild.
 
 ### 2. Verify
@@ -708,9 +809,13 @@ Promote a user to admin directly in the database (`UPDATE users SET role = 'admi
 
 Each service has two env files: `.env` (uses `localhost`, for local tooling) and `.env.docker` (uses the Docker service name as the hostname, for containers) — `docker compose` reads the latter automatically.
 
+<p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
+
 ---
 
-## Testing
+<a id="testing"></a>
+
+## 🧪 Testing
 
 Each service that owns non-trivial logic carries a Vitest suite, co-located next to the code it covers (`<feature>.service.test.ts`), run per-service with:
 
@@ -814,9 +919,13 @@ Idempotency is backed by a database-level unique constraint on `(orderId, type)`
 | **Structured logging & tracing** | See [Structured Logging & Tracing](#structured-logging--tracing) above; all 7 services confirmed emitting trace-correlated structured logs, with a single order's trace spanning all 7 services / 76 spans in Jaeger. |
 | **Multi-item partial compensation** | See [Cart & Multi-Item Orders](#cart--multi-item-orders) above for the full live-verification breakdown: a real reservation created and then genuinely released (confirmed by direct database query, not just logs), stock restored, exactly one failure event published — plus the equivalent happy path proven on the same trace, end to end through to delivery. |
 
+<p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
+
 ---
 
-## Core Hard Problems
+<a id="core-hard-problems"></a>
+
+## 🧠 Core Hard Problems
 
 | # | Problem | How Flux solves it | Proof | Service(s) |
 | :-: | --- | --- | --- | --- |
@@ -828,9 +937,13 @@ Idempotency is backed by a database-level unique constraint on `(orderId, type)`
 | 6 | **Observability across service boundaries** | A single order's journey, including the synchronous Gateway → Order → Catalog hop, is visible as one connected trace across all 7 services, and every log line anywhere in the system can be correlated back to that trace by `traceId` | Verified live, 76 spans per order | All 7 services |
 | 7 | **Partial failure inside a single order** | A multi-item order where one item can't be reserved doesn't fail atomically or leave the others silently held: Inventory reserves sequentially, rolls back everything already reserved the moment one item fails, and reports exactly one outcome for the whole order | Verified at the unit-test, CI, and live-Docker level; see [Cart & Multi-Item Orders](#cart--multi-item-orders) | Order / Inventory |
 
+<p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
+
 ---
 
-## Roadmap
+<a id="roadmap"></a>
+
+## 🗺️ Roadmap
 
 ### Phase 0 — Foundation
 
@@ -920,9 +1033,13 @@ Idempotency is backed by a database-level unique constraint on `(orderId, type)`
 - [ ] Network isolation — remove public ports from every internal service except Gateway
 - [ ] Post-deploy verification of the full saga in production
 
+<p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
+
 ---
 
-## Non-Goals (for v1)
+<a id="non-goals-for-v1"></a>
+
+## 🚫 Non-Goals (for v1)
 
 - Seller/marketplace onboarding
 - Full admin back-office and analytics dashboards
@@ -931,9 +1048,13 @@ Idempotency is backed by a database-level unique constraint on `(orderId, type)`
 
 Recommendations, real search, and multi-warehouse stock selection are deferred to a later stage of the roadmap above rather than ruled out for v1.
 
+<p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
+
 ---
 
-## Architecture Decisions
+<a id="architecture-decisions"></a>
+
+## 📚 Architecture Decisions
 
 | ADR | Decision |
 | --- | --- |
