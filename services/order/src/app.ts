@@ -32,8 +32,8 @@ app.get("/health", async (req, res) => {
   });
 });
 
-app.use("/", orderRoutes);
 app.use("/cart", cartRoutes);
+app.use("/", orderRoutes);
 
 app.use(errorHandler);
 
