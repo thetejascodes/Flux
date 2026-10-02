@@ -5,16 +5,16 @@
 
 <br/><br/>
 
-![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
-![Node.js](https://img.shields.io/badge/Node.js-20-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
-![Express](https://img.shields.io/badge/Express-5-000000?style=for-the-badge&logo=express&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-per--service-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-0b1f17?style=for-the-badge&logo=typescript&logoColor=4ade80&labelColor=0b1f17)
+![Node.js](https://img.shields.io/badge/Node.js-20-0b1f17?style=for-the-badge&logo=nodedotjs&logoColor=4ade80&labelColor=0b1f17)
+![Express](https://img.shields.io/badge/Express-5-0b1f17?style=for-the-badge&logo=express&logoColor=4ade80&labelColor=0b1f17)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-per--service-0b1f17?style=for-the-badge&logo=postgresql&logoColor=4ade80&labelColor=0b1f17)
 
-![RabbitMQ](https://img.shields.io/badge/RabbitMQ-event%20bus-FF6600?style=for-the-badge&logo=rabbitmq&logoColor=white)
-![Valkey](https://img.shields.io/badge/Valkey-Redis--compatible-DC382D?style=for-the-badge&logo=redis&logoColor=white)
-![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-Jaeger-425CC7?style=for-the-badge&logo=opentelemetry&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-70%20passing-22c55e?style=for-the-badge&logo=vitest&logoColor=white)
+![RabbitMQ](https://img.shields.io/badge/RabbitMQ-event%20bus-0b1f17?style=for-the-badge&logo=rabbitmq&logoColor=4ade80&labelColor=0b1f17)
+![Valkey](https://img.shields.io/badge/Valkey-Redis--compatible-0b1f17?style=for-the-badge&logo=redis&logoColor=4ade80&labelColor=0b1f17)
+![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-Jaeger-0b1f17?style=for-the-badge&logo=opentelemetry&logoColor=4ade80&labelColor=0b1f17)
+![Docker](https://img.shields.io/badge/Docker-Compose-0b1f17?style=for-the-badge&logo=docker&logoColor=4ade80&labelColor=0b1f17)
+![Tests](https://img.shields.io/badge/tests-70%20passing-16a34a?style=for-the-badge&logo=vitest&logoColor=white&labelColor=0b1f17)
 
 ![Gateway CI](https://github.com/thetejascodes/Flux/actions/workflows/gateway.yml/badge.svg)
 ![Catalog CI](https://github.com/thetejascodes/Flux/actions/workflows/catalog.yml/badge.svg)
@@ -223,9 +223,9 @@ flowchart LR
     GW --- VK[(Valkey)]
     INV --- VK
 
-    classDef svc fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e0e7ff;
-    classDef infra fill:#022c22,stroke:#34d399,stroke-width:2px,color:#d1fae5;
-    classDef client fill:#4a044e,stroke:#f472b6,stroke-width:2px,color:#fce7f3;
+    classDef svc fill:#052e1c,stroke:#22c55e,stroke-width:2px,color:#dcfce7;
+    classDef infra fill:#0a0a0a,stroke:#4ade80,stroke-width:2px,color:#bbf7d0;
+    classDef client fill:#064e3b,stroke:#86efac,stroke-width:2px,color:#ecfdf5;
     class GW,CAT,ORD,INV,PAY,DEL,NOT svc
     class MQ,DLQ,VK infra
     class Client client
