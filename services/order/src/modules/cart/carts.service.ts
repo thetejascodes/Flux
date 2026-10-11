@@ -16,7 +16,10 @@ const addToCart = async (userId: string, input: AddCartItemInput) => {
     })
     .onConflictDoUpdate({
       target: [cartItems.userId, cartItems.productId],
-      set: { quantity: sql`${cartItems.quantity} + ${quantity}` },
+      set: {
+        quantity: sql`${cartItems.quantity} + ${quantity}`,
+        updatedAt: sql`now()`,
+      },
     })
     .returning();
   if (!cartItem) {

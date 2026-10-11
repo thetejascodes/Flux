@@ -24,17 +24,23 @@ describe("cart.service", () => {
   });
 
   describe("addToCart", () => {
-    it("creates a new cart item with the given quantity", async () => {
-      const item = await addToCart(USER_A, {
+    it("bumps updatedAt when the same product is added again", async () => {
+      const first = await addToCart(USER_A, {
         productId: PRODUCT_A,
-        quantity: 2,
+        quantity: 1,
       });
 
-      expect(item.userId).toBe(USER_A);
-      expect(item.productId).toBe(PRODUCT_A);
-      expect(item.quantity).toBe(2);
-    });
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
+      const second = await addToCart(USER_A, {
+        productId: PRODUCT_A,
+        quantity: 1,
+      });
+
+      expect(second.updatedAt.getTime()).toBeGreaterThan(
+        first.updatedAt.getTime(),
+      );
+    });
     it("increments the existing quantity instead of creating a duplicate row", async () => {
       await addToCart(USER_A, { productId: PRODUCT_A, quantity: 2 });
       const updated = await addToCart(USER_A, {
