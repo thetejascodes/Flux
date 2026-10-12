@@ -43,6 +43,13 @@
       "when": 1790710135825,
       "tag": "0005_majestic_jackpot",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791807535541,
+      "tag": "0006_mighty_zarek",
+      "breakpoints": true
     }
   ]
 }
