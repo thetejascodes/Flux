@@ -9,12 +9,13 @@ import {
   removeFromCart,
   getCart,
 } from "./carts.service.js";
-import ApiError from "../../common/utils/api-error.js";
 
 const USER_A = randomUUID();
 const USER_B = randomUUID();
 const PRODUCT_A = randomUUID();
 const PRODUCT_B = randomUUID();
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("cart.service", () => {
   beforeEach(async () => {
@@ -30,7 +31,7 @@ describe("cart.service", () => {
         quantity: 1,
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await wait(50);
 
       const second = await addToCart(USER_A, {
         productId: PRODUCT_A,
@@ -41,6 +42,7 @@ describe("cart.service", () => {
         first.updatedAt.getTime(),
       );
     });
+
     it("increments the existing quantity instead of creating a duplicate row", async () => {
       await addToCart(USER_A, { productId: PRODUCT_A, quantity: 2 });
       const updated = await addToCart(USER_A, {
@@ -68,6 +70,23 @@ describe("cart.service", () => {
       });
 
       expect(updated.quantity).toBe(10);
+    });
+
+    it("bumps updatedAt when the quantity is updated", async () => {
+      const first = await addToCart(USER_A, {
+        productId: PRODUCT_A,
+        quantity: 1,
+      });
+
+      await wait(50);
+
+      const updated = await updateCartItemQuantity(USER_A, PRODUCT_A, {
+        quantity: 4,
+      });
+
+      expect(updated.updatedAt.getTime()).toBeGreaterThan(
+        first.updatedAt.getTime(),
+      );
     });
 
     it("throws not found when the product isn't in that user's cart", async () => {

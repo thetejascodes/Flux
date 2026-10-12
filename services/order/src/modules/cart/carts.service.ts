@@ -37,6 +37,7 @@ const updateCartItemQuantity = async (
     .update(cartItems)
     .set({
       quantity: input.quantity,
+      updatedAt: sql`now()`,
     })
     .where(
       and(eq(cartItems.userId, userId), eq(cartItems.productId, productId)),
@@ -47,6 +48,7 @@ const updateCartItemQuantity = async (
   }
   return cartItem;
 };
+
 const removeFromCart = async (userId: string, productId: string) => {
   const [cartItem] = await db
     .delete(cartItems)
@@ -59,6 +61,7 @@ const removeFromCart = async (userId: string, productId: string) => {
   }
   return cartItem;
 };
+
 const getCart = async (userId: string) => {
   const cart = await db
     .select()
