@@ -14,6 +14,11 @@ const config = {
   services: {
     catalogUrl: required("CATALOG_SERVICE_URL"),
   },
+  cart: {
+    abandonAfterMinutes: Number(optional("CART_ABANDON_MINUTES", "30")),
+    sweepIntervalMs: Number(optional("CART_SWEEP_INTERVAL_MS", "60000")),
+    sweepBatchSize: Number(optional("CART_SWEEP_BATCH_SIZE", "100")),
+  },
   shipping: {
     freeThreshold: Number(optional("FREE_SHIPPING_THRESHOLD", "500")),
     flatFee: Number(optional("SHIPPING_FLAT_FEE", "40")),
