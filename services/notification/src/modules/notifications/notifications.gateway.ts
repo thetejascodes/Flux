@@ -1,5 +1,5 @@
 import { subscribe } from "../../common/events/subscriber.js";
-import { notify } from "./notifications.service.js";
+import { notify, notifyCartAbandoned } from "./notifications.service.js";
 import logger from "../../common/logger.js";
 
 const handleOrderCreated = async (payload: unknown) => {
@@ -46,6 +46,29 @@ const handleDeliveryAssigned = async (payload: unknown) => {
   );
 };
 
+const handleCartAbandoned = async (payload: unknown) => {
+  const { userId, lastActivity, items } = payload as {
+    userId: string;
+    lastActivity: string;
+    items: { productId: string; quantity: number }[];
+  };
+  logger.info("handling CartAbandoned", { userId });
+
+  // A malformed event throws so it ends up in the dead-letter queue
+  // instead of being silently dropped.
+  if (!userId || !lastActivity) {
+    throw new Error("CartAbandoned event missing userId or lastActivity");
+  }
+
+  const itemCount = (items ?? []).reduce((sum, i) => sum + i.quantity, 0);
+
+  await notifyCartAbandoned(
+    userId,
+    lastActivity,
+    `You left ${itemCount} item(s) in your cart. Come back and complete your order.`,
+  );
+};
+
 const registerNotificationSagaHandlers = async () => {
   await subscribe(
     "notification.order-created",
@@ -67,6 +90,11 @@ const registerNotificationSagaHandlers = async () => {
     "DeliveryAssigned",
     handleDeliveryAssigned,
   );
+  await subscribe(
+    "notification.cart-abandoned",
+    "CartAbandoned",
+    handleCartAbandoned,
+  );
   logger.info("all event handlers registered");
 };
 
@@ -76,4 +104,5 @@ export {
   handlePaymentSucceeded,
   handlePaymentFailed,
   handleDeliveryAssigned,
+  handleCartAbandoned,
 };

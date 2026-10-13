@@ -8,6 +8,7 @@ import {
   handlePaymentSucceeded,
   handlePaymentFailed,
   handleDeliveryAssigned,
+  handleCartAbandoned,
 } from "./notifications.gateway.js";
 import { eq } from "drizzle-orm";
 
@@ -17,7 +18,10 @@ describe("notify idempotency", () => {
     await notify(orderId, "ORDER_CREATED", "Your order has been placed.");
     await notify(orderId, "ORDER_CREATED", "Your order has been placed.");
 
-    const rows = await db.select().from(notifications).where(eq(notifications.orderId, orderId));
+    const rows = await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.orderId, orderId));
     expect(rows.length).toBe(1);
   });
 
@@ -26,7 +30,10 @@ describe("notify idempotency", () => {
     await notify(orderId, "ORDER_CREATED", "Your order has been placed.");
     await notify(orderId, "PAYMENT_SUCCEEDED", "Payment confirmed.");
 
-    const rows = await db.select().from(notifications).where(eq(notifications.orderId, orderId));
+    const rows = await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.orderId, orderId));
     expect(rows.length).toBe(2);
   });
 });
@@ -36,7 +43,10 @@ describe("saga handlers (real gateway functions)", () => {
     const orderId = randomUUID();
     await handleOrderCreated({ orderId });
 
-    const [row] = await db.select().from(notifications).where(eq(notifications.orderId, orderId));
+    const [row] = await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.orderId, orderId));
     expect(row?.type).toBe("ORDER_CREATED");
     expect(row?.message).toContain(orderId);
     expect(row?.message.toLowerCase()).toContain("placed");
@@ -46,7 +56,10 @@ describe("saga handlers (real gateway functions)", () => {
     const orderId = randomUUID();
     await handlePaymentSucceeded({ orderId });
 
-    const [row] = await db.select().from(notifications).where(eq(notifications.orderId, orderId));
+    const [row] = await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.orderId, orderId));
     expect(row?.type).toBe("PAYMENT_SUCCEEDED");
     expect(row?.message.toLowerCase()).toContain("confirmed");
   });
@@ -55,7 +68,10 @@ describe("saga handlers (real gateway functions)", () => {
     const orderId = randomUUID();
     await handlePaymentFailed({ orderId });
 
-    const [row] = await db.select().from(notifications).where(eq(notifications.orderId, orderId));
+    const [row] = await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.orderId, orderId));
     expect(row?.type).toBe("PAYMENT_FAILED");
     expect(row?.message.toLowerCase()).toContain("failed");
   });
@@ -64,7 +80,10 @@ describe("saga handlers (real gateway functions)", () => {
     const orderId = randomUUID();
     await handleDeliveryAssigned({ orderId });
 
-    const [row] = await db.select().from(notifications).where(eq(notifications.orderId, orderId));
+    const [row] = await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.orderId, orderId));
     expect(row?.type).toBe("DELIVERY_ASSIGNED");
   });
 
@@ -73,7 +92,54 @@ describe("saga handlers (real gateway functions)", () => {
     await handlePaymentSucceeded({ orderId });
     await handlePaymentSucceeded({ orderId });
 
-    const rows = await db.select().from(notifications).where(eq(notifications.orderId, orderId));
+    const rows = await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.orderId, orderId));
     expect(rows.length).toBe(1);
+  });
+});
+
+describe("cart abandoned notifications", () => {
+  it("creates one row per user and lastActivity, even when redelivered", async () => {
+    const userId = randomUUID();
+    const payload = {
+      userId,
+      lastActivity: "2026-10-14 10:00:00.123456+00",
+      items: [{ productId: randomUUID(), quantity: 2 }],
+    };
+
+    await handleCartAbandoned(payload);
+    await handleCartAbandoned(payload);
+
+    const rows = await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.userId, userId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.type).toBe("CART_ABANDONED");
+    expect(rows[0]?.orderId).toBeNull();
+  });
+
+  it("creates a second row when lastActivity is newer (re-armed cart)", async () => {
+    const userId = randomUUID();
+    const items = [{ productId: randomUUID(), quantity: 1 }];
+
+    await handleCartAbandoned({
+      userId,
+      lastActivity: "2026-10-14 10:00:00.1+00",
+      items,
+    });
+    await handleCartAbandoned({
+      userId,
+      lastActivity: "2026-10-14 11:00:00.1+00",
+      items,
+    });
+
+    const rows = await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.userId, userId));
+    expect(rows).toHaveLength(2);
   });
 });

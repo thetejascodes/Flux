@@ -7,7 +7,8 @@ type NotificationType =
   | "ORDER_CREATED"
   | "PAYMENT_SUCCEEDED"
   | "PAYMENT_FAILED"
-  | "DELIVERY_ASSIGNED";
+  | "DELIVERY_ASSIGNED"
+  | "CART_ABANDONED";
 
 const client = config.notificationStubMode
   ? null
@@ -27,6 +28,9 @@ const send = async (phone: string | null, message: string): Promise<void> => {
   });
 };
 
+const isUniqueViolation = (error: any): boolean =>
+  (error.code ?? error.cause?.code) === "23505";
+
 const notify = async (
   orderId: string,
   type: NotificationType,
@@ -37,8 +41,7 @@ const notify = async (
     await db.insert(notifications).values({ orderId, type, message });
     await send(phone, message);
   } catch (error: any) {
-    const pgCode = error.code ?? error.cause?.code;
-    if (pgCode === "23505") {
+    if (isUniqueViolation(error)) {
       console.log(
         `[notification] skipped duplicate ${type} for order ${orderId}`,
       );
@@ -48,5 +51,31 @@ const notify = async (
   }
 };
 
-export { notify };
+const notifyCartAbandoned = async (
+  userId: string,
+  lastActivity: string,
+  message: string,
+  phone: string | null = null,
+): Promise<void> => {
+  const dedupKey = `CART_ABANDONED:${userId}:${lastActivity}`;
+  try {
+    await db.insert(notifications).values({
+      userId,
+      type: "CART_ABANDONED",
+      message,
+      dedupKey,
+    });
+    await send(phone, message);
+  } catch (error: any) {
+    if (isUniqueViolation(error)) {
+      console.log(
+        `[notification] skipped duplicate CART_ABANDONED for user ${userId}`,
+      );
+      return;
+    }
+    throw error;
+  }
+};
+
+export { notify, notifyCartAbandoned };
 export type { NotificationType };
