@@ -1,6 +1,11 @@
 import { db } from "../../common/db/index.js";
-import { orders, orderStatus, orderItems } from "../../common/db/schema.js";
-import { eq } from "drizzle-orm";
+import {
+  orders,
+  orderStatus,
+  orderItems,
+  cartItems,
+} from "../../common/db/schema.js";
+import { eq, and, inArray } from "drizzle-orm";
 import ApiError from "../../common/utils/api-error.js";
 import { publish } from "../../common/events/publisher.js";
 import type { PlaceOrderInput } from "./dto/orders.dto.js";
@@ -78,6 +83,16 @@ const placeOrder = async (userId: string, input: PlaceOrderInput) => {
         quantity: item.quantity,
         unitPrice: item.unitPrice.toFixed(2),
       })),
+    );
+
+    await tx.delete(cartItems).where(
+      and(
+        eq(cartItems.userId, userId),
+        inArray(
+          cartItems.productId,
+          itemsWithPrice.map((item) => item.productId),
+        ),
+      ),
     );
 
     return order;
