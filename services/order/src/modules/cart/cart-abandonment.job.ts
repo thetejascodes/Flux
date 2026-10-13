@@ -9,6 +9,8 @@ const ABANDON_AFTER_MINUTES = config.cart.abandonAfterMinutes;
 const SWEEP_INTERVAL_MS = config.cart.sweepIntervalMs;
 const BATCH_SIZE = config.cart.sweepBatchSize;
 
+// lastActivity is ::text on purpose: JS Dates lose microseconds, which would
+// make the "reminded < lastActivity" check true forever and re-remind every sweep.
 const STALE_USERS_SQL = `
   SELECT c.user_id AS "userId",
          max(c.updated_at)::text AS "lastActivity"
@@ -38,6 +40,8 @@ export async function runCartAbandonmentSweep(
   const minutes = options.abandonAfterMinutes ?? ABANDON_AFTER_MINUTES;
   const batch = options.batchSize ?? BATCH_SIZE;
 
+  // Advisory locks belong to one physical connection, so lock, work and
+  // unlock must all use this same client.
   const client = await db.$client.connect();
   let acquired = false;
   let reminded = 0;
@@ -68,6 +72,7 @@ export async function runCartAbandonmentSweep(
         await client.query(UPSERT_REMINDER_SQL, [userId, lastActivity]);
         reminded++;
       } catch (err) {
+        // One bad user must not abort the batch; the next sweep retries them.
         logger.error("cart abandonment failed for user", { userId, err });
       }
     }
@@ -87,6 +92,11 @@ export async function runCartAbandonmentSweep(
 let running = false;
 
 export function startCartAbandonmentJob() {
+  logger.info("cart abandonment job started", {
+    intervalMs: SWEEP_INTERVAL_MS,
+    abandonAfterMinutes: ABANDON_AFTER_MINUTES,
+  });
+
   const timer = setInterval(async () => {
     if (running) return; // don't overlap with a slow sweep in this process
     running = true;
