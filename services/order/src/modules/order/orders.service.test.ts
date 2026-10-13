@@ -4,6 +4,7 @@ import { db } from "../../common/db/index.js";
 import { orders, orderItems } from "../../common/db/schema.js";
 import { eq } from "drizzle-orm";
 import { updateOrderStatus, placeOrder } from "./orders.service.js";
+import { addToCart, getCart } from "../cart/carts.service.js";
 import { handleInventoryReserved } from "./orders.gateway.js";
 
 vi.mock("../../common/events/publisher.js", () => ({
@@ -55,9 +56,9 @@ describe("updateOrderStatus", () => {
   });
 
   it("throws a clean not-found error for a nonexistent order", async () => {
-    await expect(
-      updateOrderStatus(randomUUID(), "CONFIRMED"),
-    ).rejects.toThrow(/not found/i);
+    await expect(updateOrderStatus(randomUUID(), "CONFIRMED")).rejects.toThrow(
+      /not found/i,
+    );
   });
 });
 
@@ -81,6 +82,32 @@ describe("placeOrder pricing", () => {
     expect(order.totalAmount).toBe(
       (99.98 + Number(order.shippingFee)).toFixed(2),
     );
+  });
+
+  it("removes ordered products from the user's cart and keeps the rest", async () => {
+    const userId = randomUUID();
+    const bought = randomUUID();
+    const kept = randomUUID();
+
+    await addToCart(userId, { productId: bought, quantity: 1 });
+    await addToCart(userId, { productId: kept, quantity: 1 });
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: "success",
+        message: "",
+        data: { id: bought, price: "10.00" },
+      }),
+    }) as any;
+
+    await placeOrder(userId, {
+      warehouseId: randomUUID(),
+      items: [{ productId: bought, quantity: 1 }],
+    });
+
+    const cart = await getCart(userId);
+    expect(cart.map((i) => i.productId)).toEqual([kept]);
   });
 
   it("sums subtotal correctly across multiple different-priced items and creates one order_items row per item", async () => {
