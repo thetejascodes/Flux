@@ -11,7 +11,7 @@
 ![RabbitMQ](https://img.shields.io/badge/RabbitMQ-event%20bus-0b1f17?style=for-the-badge&logo=rabbitmq&logoColor=4ade80&labelColor=0b1f17)
 ![Valkey](https://img.shields.io/badge/Valkey-Redis--compatible-0b1f17?style=for-the-badge&logo=redis&logoColor=4ade80&labelColor=0b1f17)
 ![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-Jaeger-0b1f17?style=for-the-badge&logo=opentelemetry&logoColor=4ade80&labelColor=0b1f17)
-![Tests](https://img.shields.io/badge/tests-70%20passing-16a34a?style=for-the-badge&logo=vitest&logoColor=white&labelColor=0b1f17)
+![Tests](https://img.shields.io/badge/tests-78%20passing-16a34a?style=for-the-badge&logo=vitest&logoColor=white&labelColor=0b1f17)
 
 ![Gateway CI](https://github.com/thetejascodes/Flux/actions/workflows/gateway.yml/badge.svg)
 ![Catalog CI](https://github.com/thetejascodes/Flux/actions/workflows/catalog.yml/badge.svg)
@@ -30,7 +30,7 @@
 <table>
   <tr>
     <td align="center" width="160"><h2>7</h2><sub>independent<br/>services</sub></td>
-    <td align="center" width="160"><h2>70</h2><sub>automated<br/>tests</sub></td>
+    <td align="center" width="160"><h2>78</h2><sub>automated<br/>tests</sub></td>
     <td align="center" width="160"><h2>76</h2><sub>spans in one<br/>connected trace</sub></td>
     <td align="center" width="160"><h2>1 / 100</h2><sub>oversell-proof<br/>under load</sub></td>
     <td align="center" width="160"><h2>0</h2><sub>shared<br/>databases</sub></td>
@@ -188,6 +188,7 @@ Every row links to the evidence in [docs/deep-dives.md](docs/deep-dives.md).
 | 6 | **Nearest-driver routing** | Haversine distance, driver claimed atomically | 10 concurrent requests vs 1 driver → exactly 1 success; transaction rollback test |
 | 7 | **Observability across services** | OpenTelemetry context propagated manually through RabbitMQ headers; pino logs stamped with `traceId` | One order = one trace, 7 services, 76 spans in Jaeger |
 | 8 | **Abuse protection and access control** | Valkey sliding-window limiter at the Gateway; role carried in the JWT and enforced where the resource lives | `429`s triggered live; admin `201` vs non-admin `403` |
+| 9 | **Reminders without spam or misses** | A swept, advisory-locked job reminds each abandoned cart once per stretch of activity; publish-then-record ordering turns a failure into a deduplicated duplicate instead of a lost reminder | Vitest on real Postgres plus a live Docker run: reminded once, silent on later sweeps, re-armed by new activity, checkout clears the cart |
 
 ### Bugs that testing and scaling caught
 
@@ -198,6 +199,7 @@ A project is more believable for what broke. Five bugs were found by the test su
 - **Proxy path stripping:** the Gateway removed the `/cart` mount prefix before forwarding, so Order received `/`.
 - **Route-order collision:** `GET /:id` in Order swallowed `GET /cart` and crashed on an invalid UUID.
 - **Rounding:** `.toFixed()` with no argument turned `99.98` into `100`.
+- **Checkout never cleared the cart:** found while designing abandonment recovery. `placeOrder` took items from the request body and left `cart_items` alone, so the job would have reminded people who had already bought. Fixed inside the order transaction.
 
 <p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
 
@@ -210,10 +212,10 @@ A project is more believable for what broke. Five bugs were found by the test su
 | **Gateway** | Auth (email/password, phone OTP, Google OAuth), routing, token validation, rate limiting, role forwarding |
 | **Catalog** | Products: create, get, list (filtered, paginated), update. Writes are admin-only |
 | **Inventory** | Per-location stock, concurrency-safe reservations with timeout, background expiry job |
-| **Order** | Order lifecycle, real Catalog pricing, multi-item orders, persisted cart, drives the saga |
+| **Order** | Order lifecycle, real Catalog pricing, multi-item orders, persisted cart, abandoned-cart sweep, drives the saga |
 | **Payment** | Simulated charges, idempotent by order ID via a unique constraint |
 | **Delivery** | Nearest-driver assignment, live position simulation, WebSocket broadcast |
-| **Notification** | Event-driven customer alerts, idempotent per order + type (Twilio wired, stubbed) |
+| **Notification** | Event-driven customer alerts, idempotent per order + type (and per cart activity for cart reminders); Twilio wired, stubbed |
 
 Auth uses RS256 JWTs (15 minutes, carrying `userId` and `role`) plus opaque, hashed, rotating refresh tokens stored server-side so they can be revoked. Full reasoning in [ADR-0002](docs/adr/0002-authentication-strategy.md).
 
@@ -250,7 +252,7 @@ Every service has the same shape: `src/common/` (config, db, middleware, events,
 
 ## Testing
 
-70 tests across all 7 services, run against real infrastructure (no mocked database or broker).
+78 tests across all 7 services, run against real infrastructure (no mocked database or broker).
 
 ```bash
 cd services/<name> && npm test
@@ -263,9 +265,9 @@ for d in services/*/; do (cd "$d" && npm test); done
 | Gateway | Email/password, OTP, Google OAuth, token issuance and refresh rotation, proxy auth middleware |
 | Inventory | Zero-oversell concurrency, expiry job, multi-item partial compensation |
 | Payment | Idempotency scoped by key, not by order |
-| Order | Real-price derivation, all four saga handlers, cart upsert and per-user scoping |
+| Order | Real-price derivation, all four saga handlers, cart upsert and per-user scoping, cart cleanup at checkout, abandonment sweep |
 | Delivery | Concurrent claim, rollback on failure, nearest-driver selection |
-| Notification | Idempotency per order + notification type |
+| Notification | Idempotency per order + notification type, cart reminders deduped by (userId, lastActivity) |
 | Catalog | Create, lookup, filter, paginate, update, price precision |
 
 Details for each suite are in [docs/deep-dives.md](docs/deep-dives.md#testing-in-detail).
@@ -285,11 +287,12 @@ Details for each suite are in [docs/deep-dives.md](docs/deep-dives.md#testing-in
 | Scale + observability | Multi-instance proof, advisory locks, tracing, structured logs | ✅ |
 | Cart & multi-item orders | Persisted cart, snapshotted prices, partial compensation | ✅ |
 | **Deployment** | Managed infra, per-service CD, live demo, post-deploy saga check | ⏭️ Next |
-| Stage 5 | Cart abandonment recovery, reviews, loyalty, reorder/subscriptions | ⬜ |
+| Stage 5 | Cart abandonment recovery ✅, reviews, loyalty, reorder/subscriptions | 🔄 |
 
 ### Known gaps
 
 - [ ] **Atomic publish.** An order is committed to Postgres and then published to RabbitMQ, so a crash between the two can leave an order in `PENDING`. A transactional outbox would close this.
+- [ ] The cart is cleared when an order is created, not when payment succeeds, so a failed saga leaves an empty cart.
 - [ ] `Retry-After` and `X-RateLimit-*` headers on `429` responses.
 - [ ] Multi-IP isolation check and Vitest coverage for the rate limiter.
 - [ ] Gateway needs `trust proxy` configured so rate limiting sees the real client IP behind a load balancer.

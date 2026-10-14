@@ -2,7 +2,7 @@
 
 Evidence behind the claims in the [README](../README.md). Each section says what was built, how it was verified, and what is still open.
 
-**Contents:** [Hardening](#hardening) · [CI](#ci-pipeline) · [Scaling](#multi-instance-scaling) · [Logging & tracing](#structured-logging--tracing) · [Cart & multi-item orders](#cart--multi-item-orders) · [Testing in detail](#testing-in-detail)
+**Contents:** [Hardening](#hardening) · [CI](#ci-pipeline) · [Scaling](#multi-instance-scaling) · [Logging & tracing](#structured-logging--tracing) · [Cart & multi-item orders](#cart--multi-item-orders) · [Cart abandonment recovery](#cart-abandonment-recovery) · [Testing in detail](#testing-in-detail)
 
 ---
 
@@ -249,9 +249,62 @@ Every mutation is scoped to `(userId, productId)`; a test proves user A cannot a
 
 ---
 
+## Cart abandonment recovery
+
+A background job in Order finds carts that went quiet and has Notification remind the customer, once per stretch of cart activity.
+
+### How it works
+
+Every sweep (default every 60 seconds), Order:
+
+1. Takes a Postgres advisory lock (`pg_try_advisory_lock(1003)`) on a **dedicated connection**, so several Order instances never sweep in the same cycle. This is the same pattern as Inventory's expiry job.
+2. Runs one query: group `cart_items` by user, keep users whose newest `updated_at` is older than N minutes (default 30, configurable), and left-join `cart_reminders` so a user is picked only if they have no reminder row **or** their latest activity is newer than the activity they were last reminded about.
+3. For each user, publishes `CartAbandoned { userId, items, lastActivity }`, **then** upserts `cart_reminders`.
+
+Notification consumes `CartAbandoned` and stores a `CART_ABANDONED` notification (stub mode, like the other types).
+
+### Design decisions
+
+| Decision | Why |
+| --- | --- |
+| **Abandoned is per user**, measured by the newest `updated_at` across all of that user's cart rows | Adding to one item keeps the whole cart "alive". |
+| **Dedup state in `cart_reminders`**, keyed by `userId`, storing `remindedActivityAt` | New activity makes `lastActivity` newer than the stored value, which re-arms the reminder with no reset job. |
+| **Publish first, then upsert** | If the upsert fails, the next sweep republishes and Notification's dedup key absorbs the duplicate. The reverse order could leave a customer who is never reminded, and nothing could recover that. |
+| **`lastActivity` travels as text** | Postgres timestamps keep microseconds, a JS `Date` keeps milliseconds. Round-tripping through a `Date` would store a slightly smaller value and make "reminded < latest activity" true forever. |
+| **Notification dedups on `dedupKey`**, not `(orderId, type)` | A cart has no order. `orderId` became nullable (Postgres unique indexes treat NULLs as distinct, so the existing order rule is untouched) and cart reminders dedupe on `CART_ABANDONED:<userId>:<lastActivity>`. |
+| **Per-user try/catch** | One bad user never aborts the batch; the next sweep retries them. |
+
+Config (Order, all optional): `CART_ABANDON_MINUTES` (30), `CART_SWEEP_INTERVAL_MS` (60000), `CART_SWEEP_BATCH_SIZE` (100).
+
+### Two gaps found in the existing code and fixed
+
+1. **Checkout never cleared the cart.** `placeOrder` read items from the request body and never touched `cart_items`, so the job would have reminded people who had already bought. `placeOrder` now deletes the ordered products' cart rows **inside the same transaction** as the order insert: a failed order keeps the cart, a committed order always clears it.
+2. **`updatedAt` is set explicitly** (`now()`) on both the add-to-cart conflict path and `updateCartItemQuantity`, each with a Vitest case, so the staleness query never depends on an ORM hook.
+
+### Verified
+
+**Vitest, real Postgres.** Sweep: a stale cart is reminded once across two sweeps; a fresh cart is skipped; new activity re-arms the reminder; a user whose cart was emptied is skipped. Order: checkout removes ordered products and keeps the rest. Notification: one row per `(userId, lastActivity)` even when redelivered, and a second row for newer activity.
+
+**Live, in Docker** (threshold 1 minute, 10-second sweep):
+
+```
+order         | cart abandonment job started  (intervalMs 10000, abandonAfterMinutes 1)
+order         | [rabbitmq] published event: CartAbandoned
+notification  | handling CartAbandoned
+notification  | [notification][DEV] ... You left 2 item(s) in your cart.
+```
+
+- Later sweeps stayed silent and row counts did not grow, so nothing was reminded twice.
+- Adding to the same cart again moved `cart_reminders.reminded_activity_at` forward and produced a second `CART_ABANDONED` notification with a different `dedup_key`.
+- Placing an order for one of two carted products left only the other in `cart_items`, confirmed through Gateway (`GET /cart`) and by a direct query.
+
+**Open:** the cart is cleared when the order is **created**, not when payment succeeds, so a saga that later fails leaves the customer with an empty cart (clearing on `PaymentSucceeded` would fix it); reminders are stub-mode until the phone-lookup step; the sweep under several Order replicas has not been run live.
+
+---
+
 ## Testing in detail
 
-70 tests across 7 services; 5 real bugs found and fixed along the way. Every saga-facing gateway was refactored into named, independently testable handlers, and the full live saga was re-verified afterward, including a fixed idempotency-key scoping bug.
+78 tests across 7 services; 5 real bugs found and fixed along the way. Every saga-facing gateway was refactored into named, independently testable handlers, and the full live saga was re-verified afterward, including a fixed idempotency-key scoping bug.
 
 **Gateway (5 suites).**
 - `auth.service.test.ts`: signup, duplicate rejection, login with an identical error for bad password and unknown email (prevents account enumeration), refresh rotation invalidating the old token, ~7-day session expiry.
@@ -264,10 +317,10 @@ Every mutation is scoped to `(userId, productId)`; a test proves user A cannot a
 
 **Payment.** Same `idempotencyKey` twice returns the same row and outcome; a different key for the same order creates an independent row, so a legitimate retry after a failure isn't blocked. `handleChargePayment` publishes a compensating `PaymentFailed` on validation failure instead of dropping the event, and catches thrown errors.
 
-**Order.** Pricing against a mocked Catalog for single and multiple items (this caught the `.toFixed()` rounding bug), a Catalog-unreachable case, and all four saga handlers called as real imported functions. A second suite covers the cart: upsert increments rather than duplicating, update sets an exact value, and update/remove return not-found for both nonexistent items and another user's items.
+**Order.** Pricing against a mocked Catalog for single and multiple items (this caught the `.toFixed()` rounding bug), a Catalog-unreachable case, and all four saga handlers called as real imported functions. A second suite covers the cart: upsert increments rather than duplicating, update sets an exact value, and update/remove return not-found for both nonexistent items and another user's items. The cart suite also checks that both add-to-cart and update bump `updatedAt`. A third suite covers the abandonment sweep (stale reminded once, fresh skipped, re-armed by new activity, emptied cart skipped), and `placeOrder` has a test that checkout removes ordered products and keeps the rest.
 
 **Catalog (12 tests).** Creation with exact two-decimal prices, existing and missing lookups, filtered and unfiltered listing, pagination, empty results, partial updates that preserve unspecified fields, price updates without float corruption, and not-found updates.
 
 **Delivery.** 10 concurrent requests against 1 driver → exactly 1 success. If the delivery insert fails after the driver is claimed, the claim rolls back and the driver stays `AVAILABLE`. Two drivers at different distances → the nearer one is chosen.
 
-**Notification.** A database-level unique constraint on `(orderId, type)`, verified for repeated calls and for a genuine redelivery of `PaymentSucceeded`; different types for one order remain independent rows.
+**Notification.** A database-level unique constraint on `(orderId, type)`, verified for repeated calls and for a genuine redelivery of `PaymentSucceeded`; different types for one order remain independent rows. Cart reminders are covered separately: one row per `(userId, lastActivity)` under redelivery, and a new row when `lastActivity` is newer.
