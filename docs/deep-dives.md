@@ -86,7 +86,7 @@ Each service has its own GitHub Actions workflow, triggered only by changes unde
 1. Starts disposable containers for what that service really depends on: Postgres always, RabbitMQ for the five event-driven services, Valkey for Gateway and Inventory.
 2. Installs dependencies and compiles TypeScript.
 3. Runs the committed Drizzle migrations against the fresh Postgres.
-4. Runs the full Vitest suite against real infrastructure, with no mocked database or broker.
+4. Runs the full Vitest suite against a real Postgres and, where a suite uses them, real RabbitMQ and Valkey containers.
 
 The Gateway workflow also generates a throwaway RSA keypair with `openssl` each run and injects it as env vars, so nothing is hardcoded or persisted.
 
@@ -304,7 +304,7 @@ notification  | [notification][DEV] ... You left 2 item(s) in your cart.
 
 ## Testing in detail
 
-78 tests across 7 services; 5 real bugs found and fixed along the way. Every saga-facing gateway was refactored into named, independently testable handlers, and the full live saga was re-verified afterward, including a fixed idempotency-key scoping bug.
+91 tests across 7 services; 5 real bugs found and fixed by the suite along the way. Every saga-facing gateway was refactored into named, independently testable handlers, and the full live saga was re-verified afterward, including a fixed idempotency-key scoping bug.
 
 **Gateway (5 suites).**
 - `auth.service.test.ts`: signup, duplicate rejection, login with an identical error for bad password and unknown email (prevents account enumeration), refresh rotation invalidating the old token, ~7-day session expiry.
@@ -313,7 +313,7 @@ notification  | [notification][DEV] ... You left 2 item(s) in your cart.
 - `otp.test.ts`: the Twilio wrapper alone: stub mode skips Twilio, live mode sends the exact payload, Twilio errors propagate.
 - `auth.middleware.test.ts`: valid token sets `req.userId`; missing or malformed header gets a `401`; verification errors such as expiry reach the error handler.
 
-**Inventory.** A real 100-concurrent-request test against 1 unit of stock: exactly 1 success, 99 conflicts, none failing for unrelated reasons. The same scenario also runs as a standalone HTTP load test against a live instance. A separate suite covers the multi-item `OrderCreated` handler, both the compensation and happy paths.
+**Inventory.** A real 100-concurrent-request test against 1 unit of stock: exactly 1 success, 99 conflicts, none failing for unrelated reasons. The same scenario also runs as a standalone HTTP load test against a live instance. A separate suite covers the multi-item `OrderCreated` handler, both the compensation and happy paths. The concurrency test lives in its own file, `stock.concurrency.test.ts`, separate from the compensation tests, so one can't be overwritten while editing the other. The expiry job is verified live (see Multi-instance scaling), not by a Vitest test.
 
 **Payment.** Same `idempotencyKey` twice returns the same row and outcome; a different key for the same order creates an independent row, so a legitimate retry after a failure isn't blocked. `handleChargePayment` publishes a compensating `PaymentFailed` on validation failure instead of dropping the event, and catches thrown errors.
 

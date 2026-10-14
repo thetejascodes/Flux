@@ -11,7 +11,7 @@
 ![RabbitMQ](https://img.shields.io/badge/RabbitMQ-event%20bus-0b1f17?style=for-the-badge&logo=rabbitmq&logoColor=4ade80&labelColor=0b1f17)
 ![Valkey](https://img.shields.io/badge/Valkey-Redis--compatible-0b1f17?style=for-the-badge&logo=redis&logoColor=4ade80&labelColor=0b1f17)
 ![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-Jaeger-0b1f17?style=for-the-badge&logo=opentelemetry&logoColor=4ade80&labelColor=0b1f17)
-![Tests](https://img.shields.io/badge/tests-78%20passing-16a34a?style=for-the-badge&logo=vitest&logoColor=white&labelColor=0b1f17)
+![Tests](https://img.shields.io/badge/tests-91%20passing-16a34a?style=for-the-badge&logo=vitest&logoColor=white&labelColor=0b1f17)
 
 ![Gateway CI](https://github.com/thetejascodes/Flux/actions/workflows/gateway.yml/badge.svg)
 ![Catalog CI](https://github.com/thetejascodes/Flux/actions/workflows/catalog.yml/badge.svg)
@@ -30,7 +30,7 @@
 <table>
   <tr>
     <td align="center" width="160"><h2>7</h2><sub>independent<br/>services</sub></td>
-    <td align="center" width="160"><h2>78</h2><sub>automated<br/>tests</sub></td>
+    <td align="center" width="160"><h2>91</h2><sub>automated<br/>tests</sub></td>
     <td align="center" width="160"><h2>76</h2><sub>spans in one<br/>connected trace</sub></td>
     <td align="center" width="160"><h2>1 / 100</h2><sub>oversell-proof<br/>under load</sub></td>
     <td align="center" width="160"><h2>0</h2><sub>shared<br/>databases</sub></td>
@@ -192,7 +192,7 @@ Every row links to the evidence in [docs/deep-dives.md](docs/deep-dives.md).
 
 ### Bugs that testing and scaling caught
 
-A project is more believable for what broke. Five bugs were found by the test suite, and more only showed up when the system ran for real:
+A project is more believable for what broke. These surfaced through tests, scaling runs, and end-to-end checks against the real stack:
 
 - **Silent CI hang:** Inventory's concurrency test hung forever in CI because `ioredis` doesn't fail fast without Valkey. The fix was giving CI the dependency the code needs, not a longer timeout.
 - **Duplicate background work:** with 3 replicas, every instance ran its own expiry sweep. Fixed with `pg_try_advisory_lock`.
@@ -252,7 +252,7 @@ Every service has the same shape: `src/common/` (config, db, middleware, events,
 
 ## Testing
 
-78 tests across all 7 services, run against real infrastructure (no mocked database or broker).
+91 tests across all 7 services, run against a real Postgres, with real RabbitMQ and Valkey wherever a suite exercises them.
 
 ```bash
 cd services/<name> && npm test
@@ -263,7 +263,7 @@ for d in services/*/; do (cd "$d" && npm test); done
 | Service | Focus |
 | --- | --- |
 | Gateway | Email/password, OTP, Google OAuth, token issuance and refresh rotation, proxy auth middleware |
-| Inventory | Zero-oversell concurrency, expiry job, multi-item partial compensation |
+| Inventory | Zero-oversell concurrency (100 parallel requests, 1 unit), multi-item partial compensation |
 | Payment | Idempotency scoped by key, not by order |
 | Order | Real-price derivation, all four saga handlers, cart upsert and per-user scoping, cart cleanup at checkout, abandonment sweep |
 | Delivery | Concurrent claim, rollback on failure, nearest-driver selection |
@@ -282,7 +282,7 @@ Details for each suite are in [docs/deep-dives.md](docs/deep-dives.md#testing-in
 | --- | --- | :---: |
 | Phases 0–3 | Foundation, inventory & concurrency, order saga, delivery & routing | ✅ |
 | Phase 4 | Notification, Gateway and Catalog test suites | ✅ |
-| Hardening | DLQ, rate limiting, role enforcement, real health checks, 70 tests | ✅ |
+| Hardening | DLQ, rate limiting, role enforcement, real health checks, 70 tests at that stage | ✅ |
 | CI | Per-service GitHub Actions, all green | ✅ |
 | Scale + observability | Multi-instance proof, advisory locks, tracing, structured logs | ✅ |
 | Cart & multi-item orders | Persisted cart, snapshotted prices, partial compensation | ✅ |
