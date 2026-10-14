@@ -1,0 +1,13 @@
+{$DOMAIN} {
+    encode gzip
+
+    # Live delivery tracking (Socket.IO) goes straight to Delivery.
+    handle /socket.io/* {
+        reverse_proxy delivery:4005
+    }
+
+    # Everything else goes through the Gateway.
+    handle {
+        reverse_proxy gateway:4000
+    }
+}

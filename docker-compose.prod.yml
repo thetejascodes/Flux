@@ -1,0 +1,61 @@
+# Production override. Use together with the base file:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Needs Docker Compose v2.24.4 or newer (for the !reset / !override tags).
+# Only Caddy publishes ports to the internet (80, 443). Jaeger and the RabbitMQ
+# UI are bound to the VPS's localhost so you reach them through an SSH tunnel.
+
+services:
+  postgres:
+    ports: !reset []
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+
+  valkey:
+    ports: !reset []
+
+  rabbitmq:
+    ports: !override
+      - "127.0.0.1:15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?set RABBITMQ_USER in .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env}
+
+  jaeger:
+    ports: !override
+      - "127.0.0.1:16686:16686"
+
+  gateway:
+    ports: !reset []
+
+  catalog:
+    ports: !reset []
+
+  order:
+    ports: !reset []
+
+  payment:
+    ports: !reset []
+
+  delivery:
+    ports: !reset []
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - gateway
+      - delivery
+
+volumes:
+  caddy_data:
+  caddy_config:
