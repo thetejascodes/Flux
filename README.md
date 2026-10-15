@@ -170,6 +170,8 @@ Payment simulates a charge with a ~90% success rate, so you will see both the su
 
 Each service has two env files: `.env` (uses `localhost`, for local tooling) and `.env.docker` (uses Docker service names, read automatically by `docker compose`). More walkthroughs (rate limiter, role enforcement, scaling) are in [docs/deep-dives.md](docs/deep-dives.md).
 
+To run Flux on a server (one VPS, Caddy for HTTPS), see [docs/deployment.md](docs/deployment.md).
+
 <p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
 
 ---
@@ -223,7 +225,9 @@ Auth uses RS256 JWTs (15 minutes, carrying `userId` and `role`) plus opaque, has
 flux/
 ├── .github/workflows/   # one CI workflow per service
 ├── docker-compose.yml
-├── docs/adr/            # architecture decision records
+├── docker-compose.prod.yml   # production override: only Caddy is public
+├── Caddyfile                 # HTTPS and routing for the single-VPS deploy
+├── docs/                # adr/, deep-dives.md, deployment.md
 ├── scripts/             # DB init, load tests
 └── services/            # gateway, catalog, inventory, order, payment, delivery, notification
 ```
@@ -286,7 +290,7 @@ Details for each suite are in [docs/deep-dives.md](docs/deep-dives.md#testing-in
 | CI | Per-service GitHub Actions, all green | ✅ |
 | Scale + observability | Multi-instance proof, advisory locks, tracing, structured logs | ✅ |
 | Cart & multi-item orders | Persisted cart, snapshotted prices, partial compensation | ✅ |
-| **Deployment** | Managed infra, per-service CD, live demo, post-deploy saga check | ⏭️ Next |
+| **Deployment** | Single VPS behind Caddy (production compose and guide written), live demo, post-deploy saga check | ⏭️ Next |
 | Stage 5 | Cart abandonment recovery ✅, reviews, loyalty, reorder/subscriptions | 🔄 |
 
 ### Known gaps
@@ -295,7 +299,7 @@ Details for each suite are in [docs/deep-dives.md](docs/deep-dives.md#testing-in
 - [ ] The cart is cleared when an order is created, not when payment succeeds, so a failed saga leaves an empty cart.
 - [ ] `Retry-After` and `X-RateLimit-*` headers on `429` responses.
 - [ ] Multi-IP isolation check and Vitest coverage for the rate limiter.
-- [ ] Gateway needs `trust proxy` configured so rate limiting sees the real client IP behind a load balancer.
+- [ ] Gateway sets `trust proxy` to 1 for Caddy; verify on the deployed server that the rate limiter keys on the real client IP, not Caddy's.
 - [ ] Catalog batch price lookup (Order makes one parallel call per item today).
 - [ ] `getOrderById` doesn't yet return `order_items`.
 - [ ] Remove `X-Powered-By` (`helmet()`) and add ESLint per service in CI.
