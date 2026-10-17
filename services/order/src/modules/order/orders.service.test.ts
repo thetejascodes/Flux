@@ -3,7 +3,11 @@ import { randomUUID } from "node:crypto";
 import { db } from "../../common/db/index.js";
 import { orders, orderItems } from "../../common/db/schema.js";
 import { eq } from "drizzle-orm";
-import { updateOrderStatus, placeOrder } from "./orders.service.js";
+import {
+  updateOrderStatus,
+  placeOrder,
+  getOrderForUser,
+} from "./orders.service.js";
 import { addToCart, getCart } from "../cart/carts.service.js";
 import { handleInventoryReserved } from "./orders.gateway.js";
 
@@ -162,6 +166,25 @@ describe("placeOrder pricing", () => {
         items: [{ productId: randomUUID(), quantity: 1 }],
       }),
     ).rejects.toThrow(/unreachable/i);
+  });
+});
+
+describe("getOrderForUser", () => {
+  it("returns the order to the user who owns it", async () => {
+    const userId = randomUUID();
+    const order = await seedOrder({ userId });
+
+    const found = await getOrderForUser(order.id, userId);
+
+    expect(found.id).toBe(order.id);
+  });
+
+  it("throws not found when the order belongs to someone else", async () => {
+    const order = await seedOrder();
+
+    await expect(getOrderForUser(order.id, randomUUID())).rejects.toThrow(
+      /not found/i,
+    );
   });
 });
 

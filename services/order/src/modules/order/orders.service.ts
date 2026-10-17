@@ -115,9 +115,23 @@ const placeOrder = async (userId: string, input: PlaceOrderInput) => {
   return order;
 };
 
+// Internal lookup (no owner check). Use only from trusted code paths.
 const getOrderById = async (id: string) => {
   const [order] = await db.select().from(orders).where(eq(orders.id, id));
   if (!order) {
+    throw ApiError.notFound("Order not found");
+  }
+  return order;
+};
+
+// HTTP-facing lookup: only the owner can read an order.
+const getOrderForUser = async (id: string, userId: string) => {
+  const [order] = await db
+    .select()
+    .from(orders)
+    .where(and(eq(orders.id, id), eq(orders.userId, userId)));
+  if (!order) {
+    // 404, not 403: don't reveal that someone else's order exists
     throw ApiError.notFound("Order not found");
   }
   return order;
@@ -139,4 +153,10 @@ const updateOrderStatus = async (
   return order;
 };
 
-export { placeOrder, getOrderById, updateOrderStatus, getProductPrice };
+export {
+  placeOrder,
+  getOrderById,
+  getOrderForUser,
+  updateOrderStatus,
+  getProductPrice,
+};

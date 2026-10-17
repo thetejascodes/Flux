@@ -27,11 +27,15 @@ const getOrderById = async (
   next: NextFunction,
 ) => {
   try {
-    const result = await orderService.getOrderById(req.params.id);
+    const userId = req.headers["x-user-id"] as string | undefined;
+    if (!userId) {
+      throw ApiError.unauthorized("Missing user identity");
+    }
+    const result = await orderService.getOrderForUser(req.params.id, userId);
     return ApiResponse.ok(res, "Order fetched successfully", result);
   } catch (error) {
     next(error);
   }
 };
 
-export { placeOrder,getOrderById };
+export { placeOrder, getOrderById };
