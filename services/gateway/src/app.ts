@@ -33,7 +33,6 @@ app.get("/health", async (req, res) => {
 });
 
 app.use("/catalog", isAuthenticated, proxyTo(config.services.catalogUrl));
-app.use("/inventory", isAuthenticated, proxyTo(config.services.inventoryUrl));
 app.use(
   "/orders",
   isAuthenticated,
