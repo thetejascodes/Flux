@@ -10,6 +10,8 @@ Target: a 4 GB / 2 vCPU Ubuntu box, one domain, Caddy for HTTPS. Only Caddy is p
 - A `.dockerignore` in every service folder (`node_modules`, `dist`, `.env`, `.env.*`, `coverage`), so images carry no secrets.
 - A RabbitMQ healthcheck that waits for the AMQP listener, so services do not crash on startup.
 - `app.set("trust proxy", 1)` in the Gateway, so rate limiting sees the real client IP behind Caddy.
+- `app.disable("x-powered-by")` in the Gateway, so responses do not advertise Express.
+- A demo seed in `scripts/seed/` (8 products, stock, one warehouse, 5 drivers).
 
 ## 1. Server setup
 
@@ -90,7 +92,7 @@ If `services/gateway/.env.docker` already contains `JWT_PRIVATE_KEY` and `JWT_PU
 
 ## 3. Start the infrastructure and run the migrations
 
-Postgres only runs `init-databases.sh` on an empty volume, which a fresh server has, so the per-service databases are created on the first start.
+Postgres only runs `init-databases.sh` on an empty volume, which a fresh server has, so the per-service databases are created on the first start. The services do **not** create their own tables, so the migrations below are required before anything works.
 
 ```bash
 alias dc="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
@@ -114,28 +116,57 @@ dc ps
 dc logs -f --tail 30 gateway order
 ```
 
+Wait about 10 seconds before the first health check. Docker reports a container as started before Node is listening, so an immediate request can return `Empty reply from server`.
+
 ## 4. Seed the data
 
-A fresh database has no products, warehouses, drivers or admin user, so the saga has nothing to run on. You need at least: one admin user (sign up, then promote it with `UPDATE users SET role='admin' WHERE email='...'` through `dc exec postgres psql -U admin -d gateway_db`), a few products, stock for them at a warehouse, and a few drivers near that warehouse. A seed script is worth writing once so this is repeatable.
+A fresh database has no products, warehouses, drivers or admin user, so the saga has nothing to run on.
+
+**Demo data.** The repo ships a seed in `scripts/seed/` (8 products, stock, one warehouse, 5 drivers). Run it after the migrations:
+
+```bash
+for p in catalog inventory delivery; do
+  dc exec -T postgres psql -1 -v ON_ERROR_STOP=1 -U admin -d ${p}_db < scripts/seed/$p.sql
+done
+```
+
+Each file runs as one transaction and stops on the first error. The seed deletes any product, stock row or driver that is not in its list, so use it on a demo server only. It is safe to rerun, and rerunning resets stock and drivers.
+
+**Admin user.** Create it by hand: sign up through `POST /api/auth/signup`, promote it, then log in again so the token carries the role:
+
+```bash
+dc exec postgres psql -U admin -d gateway_db -c "UPDATE users SET role = 'admin' WHERE email = '<admin email>';"
+```
+
+It should print `UPDATE 1`. `UPDATE 0` means the email did not match.
+
+**Never run `npm test` against the server's databases.** The suites write test products, drivers and users into the same databases the demo uses. If it happens, rerun the seed.
 
 ## 5. Verify, the way you did locally
 
-Use `https://<DOMAIN>` in Postman:
+Use `https://<DOMAIN>` in Postman. The warehouse ID in the seed is `6193882b-fab5-4cde-9c0d-dd87b335c56e`.
 
-1. `GET /health` returns `ok`.
-2. Sign up, log in, add to the cart, place an order, and watch the logs: `dc logs -f order inventory payment delivery notification`.
-3. Check the trace and the data from the server:
+1. `GET /health` returns `{"status":"ok","checks":{"database":"ok"}}`, and the response has no `X-Powered-By` header.
+2. Sign up, log in, add to the cart, place an order, and watch the logs: `dc logs -f order inventory payment delivery notification`. The order should go from `PENDING` to `CONFIRMED` with a `paymentId`. About 1 in 10 payments fail by design.
+3. **Ownership check.** Sign up a second user and send `GET /orders/<first user's order id>` with the second user's token. It must return 404 ("Order not found"), and 200 with the first user's token.
+4. **Role check.** `POST /catalog/products` returns 401 with no token, 403 for a regular user, and 201 for the admin. `GET /catalog/products` returns 200 for any logged-in user.
+5. Check the trace and the data from the server:
+
 ```bash
-   # from your machine, tunnel to Jaeger and the RabbitMQ UI
-   ssh -L 16686:localhost:16686 -L 15672:localhost:15672 deploy@<ip>
-   # then open http://localhost:16686 and http://localhost:15672
-   dc exec postgres psql -P pager=off -U admin -d order_db -c "SELECT status FROM orders ORDER BY created_at DESC LIMIT 5;"
+# from your machine, tunnel to Jaeger and the RabbitMQ UI
+ssh -L 16686:localhost:16686 -L 15672:localhost:15672 deploy@<ip>
+# then open http://localhost:16686 and http://localhost:15672
+dc exec postgres psql -P pager=off -U admin -d order_db -c "SELECT status FROM orders ORDER BY created_at DESC LIMIT 5;"
 ```
-4. Live tracking: connect the Socket.IO client to `https://<DOMAIN>` (not port 4005). The path `/socket.io` goes to Delivery through Caddy.
-5. From outside, confirm nothing else is reachable: ports 5432, 5672, 6379, 4001 to 4005, 15672 and 16686 must all be closed to the internet.
+
+6. Live tracking: connect the Socket.IO client to `https://<DOMAIN>` (not port 4005). The path `/socket.io` goes to Delivery through Caddy.
+7. **Rate limiter and client IP.** Send 12 bad logins in a row. You should get ten 401s, then 429s. Check that the limiter keys on your real IP and not Caddy's: `dc exec valkey valkey-cli --scan --pattern 'ratelimit:*'` should show your IP, not a Docker address.
+8. From outside, confirm nothing else is reachable: ports 5432, 5672, 6379, 4001 to 4005, 15672 and 16686 must all be closed to the internet.
 
 ## 6. Updating later
 
 ```bash
 git pull && dc build <service> && dc up -d <service>
 ```
+
+If a rebuilt container is not replaced, run `dc down` and then `dc up -d`. A schema change also needs `dc run --rm <service> npx drizzle-kit migrate`.
