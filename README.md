@@ -1,4 +1,5 @@
 <a id="top"></a>
+
 <div align="center">
 
 <img src="assets/banner.svg" alt="Flux — One order. Seven services. Zero excuses." width="100%"/>
@@ -11,7 +12,7 @@
 ![RabbitMQ](https://img.shields.io/badge/RabbitMQ-event%20bus-0b1f17?style=for-the-badge&logo=rabbitmq&logoColor=4ade80&labelColor=0b1f17)
 ![Valkey](https://img.shields.io/badge/Valkey-Redis--compatible-0b1f17?style=for-the-badge&logo=redis&logoColor=4ade80&labelColor=0b1f17)
 ![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-Jaeger-0b1f17?style=for-the-badge&logo=opentelemetry&logoColor=4ade80&labelColor=0b1f17)
-![Tests](https://img.shields.io/badge/tests-91%20passing-16a34a?style=for-the-badge&logo=vitest&logoColor=white&labelColor=0b1f17)
+![Tests](https://img.shields.io/badge/tests-93%20passing-16a34a?style=for-the-badge&logo=vitest&logoColor=white&labelColor=0b1f17)
 
 ![Gateway CI](https://github.com/thetejascodes/Flux/actions/workflows/gateway.yml/badge.svg)
 ![Catalog CI](https://github.com/thetejascodes/Flux/actions/workflows/catalog.yml/badge.svg)
@@ -30,7 +31,7 @@
 <table>
   <tr>
     <td align="center" width="160"><h2>7</h2><sub>independent<br/>services</sub></td>
-    <td align="center" width="160"><h2>91</h2><sub>automated<br/>tests</sub></td>
+    <td align="center" width="160"><h2>93</h2><sub>automated<br/>tests</sub></td>
     <td align="center" width="160"><h2>76</h2><sub>spans in one<br/>connected trace</sub></td>
     <td align="center" width="160"><h2>1 / 100</h2><sub>oversell-proof<br/>under load</sub></td>
     <td align="center" width="160"><h2>0</h2><sub>shared<br/>databases</sub></td>
@@ -142,6 +143,20 @@ docker compose ps                    # Postgres, Valkey, RabbitMQ, Jaeger + 7 se
 curl http://localhost:4000/health    # {"status":"ok","checks":{"database":"ok"}}
 ```
 
+Give the services about 10 seconds to start before the health check. Docker reports a container as started before Node is listening, so an immediate `curl` can return `Empty reply from server`.
+
+On a fresh volume the databases are empty, so apply each service's migrations, then load the demo data:
+
+```powershell
+# once per service (check each package.json for a migrate script)
+cd services\<name>; npx drizzle-kit migrate; cd ..\..
+
+# demo data: 8 products, stock, 1 warehouse, 5 drivers
+.\scripts\seed.ps1
+```
+
+Sign up through `POST /api/auth/signup` to create a user. To make an admin, run `UPDATE users SET role = 'admin' WHERE email = '<email>';` in `gateway_db`, then log in again so the token carries the role. The seed is safe to rerun, and it resets stock and drivers. `npm test` writes into the same databases, so reseed before a demo.
+
 Place an order (an order can carry one item or several):
 
 ```bash
@@ -228,7 +243,7 @@ flux/
 ├── docker-compose.prod.yml   # production override: only Caddy is public
 ├── Caddyfile                 # HTTPS and routing for the single-VPS deploy
 ├── docs/                # adr/, deep-dives.md, deployment.md
-├── scripts/             # DB init, load tests
+├── scripts/             # DB init, demo seed, load tests
 └── services/            # gateway, catalog, inventory, order, payment, delivery, notification
 ```
 
@@ -256,7 +271,7 @@ Every service has the same shape: `src/common/` (config, db, middleware, events,
 
 ## Testing
 
-91 tests across all 7 services, run against a real Postgres, with real RabbitMQ and Valkey wherever a suite exercises them.
+93 tests across all 7 services, run against a real Postgres, with real RabbitMQ and Valkey wherever a suite exercises them.
 
 ```bash
 cd services/<name> && npm test
@@ -302,7 +317,8 @@ Details for each suite are in [docs/deep-dives.md](docs/deep-dives.md#testing-in
 - [ ] Gateway sets `trust proxy` to 1 for Caddy; verify on the deployed server that the rate limiter keys on the real client IP, not Caddy's.
 - [ ] Catalog batch price lookup (Order makes one parallel call per item today).
 - [ ] `getOrderById` doesn't yet return `order_items`.
-- [ ] Remove `X-Powered-By` (`helmet()`) and add ESLint per service in CI.
+- [ ] Add ESLint per service in CI. (`X-Powered-By` is already disabled at the Gateway; `helmet()` for the other security headers is optional.)
+- [ ] Separate `*_test` databases, so `npm test` no longer writes into the demo data.
 - [ ] Dashboard and case study write-up.
 
 <p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
