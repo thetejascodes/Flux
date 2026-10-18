@@ -9,6 +9,7 @@ import { db } from "./common/db/index.js";
 import { sql } from "drizzle-orm";
 
 const app = express();
+app.disable("x-powered-by");
 app.set("trust proxy", 1); // exactly one hop: Caddy
 const ordersLimiter = rateLimiter({
   windowMs: 60_000,
