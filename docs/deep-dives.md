@@ -304,7 +304,7 @@ notification  | [notification][DEV] ... You left 2 item(s) in your cart.
 
 ## Testing in detail
 
-91 tests across 7 services; 5 real bugs found and fixed by the suite along the way. Every saga-facing gateway was refactored into named, independently testable handlers, and the full live saga was re-verified afterward, including a fixed idempotency-key scoping bug.
+93 tests across 7 services; 5 real bugs found and fixed by the suite along the way. Every saga-facing gateway was refactored into named, independently testable handlers, and the full live saga was re-verified afterward, including a fixed idempotency-key scoping bug.
 
 **Gateway (5 suites).**
 - `auth.service.test.ts`: signup, duplicate rejection, login with an identical error for bad password and unknown email (prevents account enumeration), refresh rotation invalidating the old token, ~7-day session expiry.
