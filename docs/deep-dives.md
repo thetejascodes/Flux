@@ -2,7 +2,7 @@
 
 Evidence behind the claims in the [README](../README.md). Each section says what was built, how it was verified, and what is still open.
 
-**Contents:** [Hardening](#hardening) · [CI](#ci-pipeline) · [Scaling](#multi-instance-scaling) · [Logging & tracing](#structured-logging--tracing) · [Cart & multi-item orders](#cart--multi-item-orders) · [Cart abandonment recovery](#cart-abandonment-recovery) · [Testing in detail](#testing-in-detail)
+**Contents:** [Hardening](#hardening) · [CI](#ci-pipeline) · [Scaling](#multi-instance-scaling) · [Logging & tracing](#structured-logging--tracing) · [Cart & multi-item orders](#cart--multi-item-orders) · [Cart abandonment recovery](#cart-abandonment-recovery) · [Paid-order stock confirmation](#paid-order-stock-confirmation) · [Testing in detail](#testing-in-detail)
 
 ---
 
@@ -302,9 +302,30 @@ notification  | [notification][DEV] ... You left 2 item(s) in your cart.
 
 ---
 
+## Paid-order stock confirmation
+
+A bug found only by running the system and watching one order for ten minutes.
+
+**What was wrong.** Inventory reserves stock when an order is created and marks the reservation `PENDING` with a 10-minute expiry. Nothing ever told Inventory that the order was paid. After a delivered order, its reservation stayed `PENDING`, and the expiry job released it:
+
+```
+reservation PENDING (order CONFIRMED and delivered)
+...
+00:42:19  RELEASED      bread: 200 available, 0 reserved
+```
+
+The sold unit went back on the shelf. The 100-concurrent-request test still passed, because it checks that reservations can't exceed stock at one moment, not that a sale stays subtracted.
+
+**The fix.** Inventory now subscribes to `PaymentSucceeded` and runs `confirmReservationsByOrderId`: in one transaction it sets the order's `PENDING` reservations to `CONFIRMED` and reduces `quantity_reserved` by each one's quantity, leaving `quantity_available` alone. Only `PENDING` rows change, so a redelivered event is a no-op, and the expiry job only selects `PENDING` rows, so it never releases a confirmed one.
+
+**Verified.** Three Vitest cases (confirm and keep the unit sold, redelivery changes nothing, another order's reservation is untouched). Live: one order, reservation `CONFIRMED`, bread 199 available and 0 reserved, then watched for 14 minutes across the 10-minute expiry with the job running every 60 seconds; every line stayed `CONFIRMED` and 199.
+
+**Open:** a payment slower than the 10-minute reservation window would let the reservation expire first. The simulated payment takes milliseconds, so this is not exercised today.
+
+---
 ## Testing in detail
 
-93 tests across 7 services; 5 real bugs found and fixed by the suite along the way. Every saga-facing gateway was refactored into named, independently testable handlers, and the full live saga was re-verified afterward, including a fixed idempotency-key scoping bug.
+96 tests across 7 services; 5 real bugs found and fixed by the suite along the way. Every saga-facing gateway was refactored into named, independently testable handlers, and the full live saga was re-verified afterward, including a fixed idempotency-key scoping bug.
 
 **Gateway (5 suites).**
 - `auth.service.test.ts`: signup, duplicate rejection, login with an identical error for bad password and unknown email (prevents account enumeration), refresh rotation invalidating the old token, ~7-day session expiry.
@@ -313,7 +334,7 @@ notification  | [notification][DEV] ... You left 2 item(s) in your cart.
 - `otp.test.ts`: the Twilio wrapper alone: stub mode skips Twilio, live mode sends the exact payload, Twilio errors propagate.
 - `auth.middleware.test.ts`: valid token sets `req.userId`; missing or malformed header gets a `401`; verification errors such as expiry reach the error handler.
 
-**Inventory.** A real 100-concurrent-request test against 1 unit of stock: exactly 1 success, 99 conflicts, none failing for unrelated reasons. The same scenario also runs as a standalone HTTP load test against a live instance. A separate suite covers the multi-item `OrderCreated` handler, both the compensation and happy paths. The concurrency test lives in its own file, `stock.concurrency.test.ts`, separate from the compensation tests, so one can't be overwritten while editing the other. The expiry job is verified live (see Multi-instance scaling), not by a Vitest test.
+**Inventory.** A real 100-concurrent-request test against 1 unit of stock: exactly 1 success, 99 conflicts, none failing for unrelated reasons. The same scenario also runs as a standalone HTTP load test against a live instance. A separate suite covers the multi-item `OrderCreated` handler, both the compensation and happy paths. The concurrency test lives in its own file, `stock.concurrency.test.ts`, separate from the compensation tests, so one can't be overwritten while editing the other. The expiry job is verified live (see Multi-instance scaling), not by a Vitest test. Reservation confirmation on payment is covered by stock.confirm.test.ts (confirm, redelivery, and isolation from other orders).
 
 **Payment.** Same `idempotencyKey` twice returns the same row and outcome; a different key for the same order creates an independent row, so a legitimate retry after a failure isn't blocked. `handleChargePayment` publishes a compensating `PaymentFailed` on validation failure instead of dropping the event, and catches thrown errors.
 

@@ -12,7 +12,7 @@
 ![RabbitMQ](https://img.shields.io/badge/RabbitMQ-event%20bus-0b1f17?style=for-the-badge&logo=rabbitmq&logoColor=4ade80&labelColor=0b1f17)
 ![Valkey](https://img.shields.io/badge/Valkey-Redis--compatible-0b1f17?style=for-the-badge&logo=redis&logoColor=4ade80&labelColor=0b1f17)
 ![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-Jaeger-0b1f17?style=for-the-badge&logo=opentelemetry&logoColor=4ade80&labelColor=0b1f17)
-![Tests](https://img.shields.io/badge/tests-93%20passing-16a34a?style=for-the-badge&logo=vitest&logoColor=white&labelColor=0b1f17)
+![Tests](https://img.shields.io/badge/tests-96%20passing-16a34a?style=for-the-badge&logo=vitest&logoColor=white&labelColor=0b1f17)
 
 ![Gateway CI](https://github.com/thetejascodes/Flux/actions/workflows/gateway.yml/badge.svg)
 ![Catalog CI](https://github.com/thetejascodes/Flux/actions/workflows/catalog.yml/badge.svg)
@@ -31,7 +31,7 @@
 <table>
   <tr>
     <td align="center" width="160"><h2>7</h2><sub>independent<br/>services</sub></td>
-    <td align="center" width="160"><h2>93</h2><sub>automated<br/>tests</sub></td>
+    <td align="center" width="160"><h2>96</h2><sub>automated<br/>tests</sub></td>
     <td align="center" width="160"><h2>76</h2><sub>spans in one<br/>connected trace</sub></td>
     <td align="center" width="160"><h2>1 / 100</h2><sub>oversell-proof<br/>under load</sub></td>
     <td align="center" width="160"><h2>0</h2><sub>shared<br/>databases</sub></td>
@@ -217,6 +217,7 @@ A project is more believable for what broke. These surfaced through tests, scali
 - **Route-order collision:** `GET /:id` in Order swallowed `GET /cart` and crashed on an invalid UUID.
 - **Rounding:** `.toFixed()` with no argument turned `99.98` into `100`.
 - **Checkout never cleared the cart:** found while designing abandonment recovery. `placeOrder` took items from the request body and left `cart_items` alone, so the job would have reminded people who had already bought. Fixed inside the order transaction.
+- **Paid orders never confirmed their stock reservation:** found by watching a delivered order for ten minutes. Inventory never learned that payment succeeded, so the reservation stayed `PENDING` and the expiry job released the sold unit back into stock. Fixed by having Inventory consume `PaymentSucceeded` and confirm the order's reservations (idempotent, `PENDING` rows only), with three tests and a live recheck past the expiry time.
 
 <p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
 
@@ -271,7 +272,7 @@ Every service has the same shape: `src/common/` (config, db, middleware, events,
 
 ## Testing
 
-93 tests across all 7 services, run against a real Postgres, with real RabbitMQ and Valkey wherever a suite exercises them.
+96 tests across all 7 services, run against a real Postgres, with real RabbitMQ and Valkey wherever a suite exercises them.
 
 ```bash
 cd services/<name> && npm test
@@ -282,7 +283,7 @@ for d in services/*/; do (cd "$d" && npm test); done
 | Service | Focus |
 | --- | --- |
 | Gateway | Email/password, OTP, Google OAuth, token issuance and refresh rotation, proxy auth middleware |
-| Inventory | Zero-oversell concurrency (100 parallel requests, 1 unit), multi-item partial compensation |
+| Inventory | Zero-oversell concurrency (100 parallel requests, 1 unit), multi-item partial compensation, paid-order reservation confirmation |
 | Payment | Idempotency scoped by key, not by order |
 | Order | Real-price derivation, all four saga handlers, cart upsert and per-user scoping, cart cleanup at checkout, abandonment sweep |
 | Delivery | Concurrent claim, rollback on failure, nearest-driver selection |
@@ -312,6 +313,7 @@ Details for each suite are in [docs/deep-dives.md](docs/deep-dives.md#testing-in
 
 - [ ] **Atomic publish.** An order is committed to Postgres and then published to RabbitMQ, so a crash between the two can leave an order in `PENDING`. A transactional outbox would close this.
 - [ ] The cart is cleared when an order is created, not when payment succeeds, so a failed saga leaves an empty cart.
+- [ ] Reservations expire after 10 minutes, so a payment slower than that (a real provider with webhooks) would lose its reservation before confirmation arrives.
 - [ ] `Retry-After` and `X-RateLimit-*` headers on `429` responses.
 - [ ] Multi-IP isolation check and Vitest coverage for the rate limiter.
 - [ ] Gateway sets `trust proxy` to 1 for Caddy; verify on the deployed server that the rate limiter keys on the real client IP, not Caddy's.
