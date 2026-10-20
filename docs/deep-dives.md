@@ -323,6 +323,7 @@ The sold unit went back on the shelf. The 100-concurrent-request test still pass
 **Open:** a payment slower than the 10-minute reservation window would let the reservation expire first. The simulated payment takes milliseconds, so this is not exercised today.
 
 ---
+
 ## Testing in detail
 
 96 tests across 7 services; 5 real bugs found and fixed by the suite along the way. Every saga-facing gateway was refactored into named, independently testable handlers, and the full live saga was re-verified afterward, including a fixed idempotency-key scoping bug.
