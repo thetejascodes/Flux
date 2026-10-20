@@ -5,6 +5,7 @@ import {
   reserveStock,
   releaseReservation as releaseReservationById,
   releaseReservationsByOrderId,
+  confirmReservationsByOrderId,
 } from "./stock.service.js";
 import logger from "../../common/logger.js";
 
@@ -87,6 +88,15 @@ const handleReleaseReservation = async (payload: unknown) => {
   await releaseReservationsByOrderId(orderId);
 };
 
+// A paid order must keep its stock: move its reservations from PENDING to
+// CONFIRMED, so the expiry job never gives a sold unit back.
+const handlePaymentSucceeded = async (payload: unknown) => {
+  const { orderId } = payload as { orderId: string };
+  logger.info("confirming reservations for paid order", { orderId });
+
+  await confirmReservationsByOrderId(orderId);
+};
+
 const registerInventorySagaHandlers = async () => {
   await subscribe(
     "inventory.order-created",
@@ -98,6 +108,11 @@ const registerInventorySagaHandlers = async () => {
     "ReleaseReservation",
     handleReleaseReservation,
   );
+  await subscribe(
+    "inventory.payment-succeeded",
+    "PaymentSucceeded",
+    handlePaymentSucceeded,
+  );
   logger.info("all event handlers registered");
 };
 
@@ -105,4 +120,5 @@ export {
   registerInventorySagaHandlers,
   handleOrderCreated,
   handleReleaseReservation,
+  handlePaymentSucceeded,
 };

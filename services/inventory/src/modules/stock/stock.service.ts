@@ -120,7 +120,47 @@ const confirmReservation = async (reservationId: string) => {
 
   await redis.del(`reservation:${reservationId}`);
 };
+const confirmReservationsByOrderId = async (orderId: string) => {
+  const confirmed = await db.transaction(async (tx) => {
+    // Only PENDING rows change, so a redelivered event is a harmless no-op.
+    const rows = await tx
+      .update(reservations)
+      .set({ status: "CONFIRMED" })
+      .where(
+        and(
+          eq(reservations.orderId, orderId),
+          eq(reservations.status, "PENDING"),
+        ),
+      )
+      .returning();
 
+    for (const reservation of rows) {
+      await tx
+        .update(stock)
+        .set({
+          quantityReserved: sql`${stock.quantityReserved} - ${reservation.quantity}`,
+        })
+        .where(
+          and(
+            eq(stock.productId, reservation.productId),
+            eq(stock.warehouseId, reservation.warehouseId),
+          ),
+        );
+    }
+    return rows;
+  });
+
+  for (const reservation of confirmed) {
+    try {
+      await redis.del(`reservation:${reservation.id}`);
+    } catch (error) {
+      logger.warn("failed to delete reservation key after confirm", {
+        reservationId: reservation.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+};
 const findExpiredPendingReservations = async () => {
   return db
     .select({ id: reservations.id })
@@ -161,6 +201,7 @@ export {
   reserveStock,
   releaseReservation,
   confirmReservation,
+  confirmReservationsByOrderId,
   findExpiredPendingReservations,
   releaseReservationsByOrderId,
 };
