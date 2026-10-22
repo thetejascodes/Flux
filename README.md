@@ -44,12 +44,13 @@
 
 **Flux is a quick-commerce backend built as seven independent services with no shared database.** It models the problems that make order systems hard: reserving stock under concurrency, coordinating services through events, recovering when a step fails, and routing deliveries, and it backs each claim with a test, a load run, or a trace.
 
-<!--
-  TODO (add before applying):
-  - Live demo: Gateway URL + Jaeger screenshot
-  - 60-second GIF: an order moving through the saga, with the matching trace
-  - One benchmark line: orders/sec and p99 latency on the deployed box
--->
+### Demo
+
+A recording of a local run with `docker compose`, not a hosted deployment.
+
+![One order, one trace across 7 services](assets/trace.png)
+
+![Not enough stock: the reservation is rolled back](assets/compensation.png)
 
 ## Contents
 
