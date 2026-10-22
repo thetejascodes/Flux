@@ -32,7 +32,7 @@
   <tr>
     <td align="center" width="160"><h2>7</h2><sub>independent<br/>services</sub></td>
     <td align="center" width="160"><h2>96</h2><sub>automated<br/>tests</sub></td>
-    <td align="center" width="160"><h2>76</h2><sub>spans in one<br/>connected trace</sub></td>
+    <td align="center" width="160"><h2>83</h2><sub>spans in one<br/>connected trace</sub></td>
     <td align="center" width="160"><h2>1 / 100</h2><sub>oversell-proof<br/>under load</sub></td>
     <td align="center" width="160"><h2>0</h2><sub>shared<br/>databases</sub></td>
   </tr>
@@ -48,7 +48,7 @@
 
 A recording of a local run with `docker compose`, not a hosted deployment.
 
-![One order, one trace across 7 services](assets/trace.png)
+![One order, one trace: 83 spans across 7 services](assets/trace.png)
 
 ![Not enough stock: the reservation is rolled back](assets/compensation.png)
 
@@ -204,7 +204,7 @@ Every row links to the evidence in [docs/deep-dives.md](docs/deep-dives.md).
 | 4 | **Partial failure inside one order** | Items reserved sequentially; if item N fails, items 1..N-1 are released and exactly one failure event is published | Unit test, CI, and a live Docker run |
 | 5 | **Failed events aren't lost** | Dead-letter exchange on every consuming service, with payload and `x-death` metadata preserved | Forced-failure test, then a full saga re-run with no regressions |
 | 6 | **Nearest-driver routing** | Haversine distance, driver claimed atomically | 10 concurrent requests vs 1 driver → exactly 1 success; transaction rollback test |
-| 7 | **Observability across services** | OpenTelemetry context propagated manually through RabbitMQ headers; pino logs stamped with `traceId` | One order = one trace, 7 services, 76 spans in Jaeger |
+| 7 | **Observability across services** | OpenTelemetry context propagated manually through RabbitMQ headers; pino logs stamped with `traceId` | One order = one trace, 7 services, 83 spans in Jaeger |
 | 8 | **Abuse protection and access control** | Valkey sliding-window limiter at the Gateway; role carried in the JWT and enforced where the resource lives | `429`s triggered live; admin `201` vs non-admin `403` |
 | 9 | **Reminders without spam or misses** | A swept, advisory-locked job reminds each abandoned cart once per stretch of activity; publish-then-record ordering turns a failure into a deduplicated duplicate instead of a lost reminder | Vitest on real Postgres plus a live Docker run: reminded once, silent on later sweeps, re-armed by new activity, checkout clears the cart |
 
