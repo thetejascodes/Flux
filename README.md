@@ -44,9 +44,11 @@
 
 **Flux is a quick-commerce backend built as seven independent services with no shared database.** It models the problems that make order systems hard: reserving stock under concurrency, coordinating services through events, recovering when a step fails, and routing deliveries, and it backs each claim with a test, a load run, or a trace.
 
+**Status:** a solo hobby project, finished at its current scope. It runs locally with `docker compose` and is not deployed. Payments are simulated. What is left out is listed under [Known gaps](#known-gaps) and the [Roadmap](#roadmap).
+
 ### Demo
 
-A recording of a local run with `docker compose`, not a hosted deployment.
+Screenshots of a local run with `docker compose`, not a hosted deployment.
 
 ![One order, one trace: 83 spans across 7 services](assets/trace.png)
 
@@ -186,7 +188,7 @@ Payment simulates a charge with a ~90% success rate, so you will see both the su
 
 Each service has two env files: `.env` (uses `localhost`, for local tooling) and `.env.docker` (uses Docker service names, read automatically by `docker compose`). More walkthroughs (rate limiter, role enforcement, scaling) are in [docs/deep-dives.md](docs/deep-dives.md).
 
-To run Flux on a server (one VPS, Caddy for HTTPS), see [docs/deployment.md](docs/deployment.md).
+To run Flux on a server (one VPS, Caddy for HTTPS), see [docs/deployment.md](docs/deployment.md). That guide is written but has not been run end to end.
 
 <p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
 
@@ -205,7 +207,7 @@ Every row links to the evidence in [docs/deep-dives.md](docs/deep-dives.md).
 | 5 | **Failed events aren't lost** | Dead-letter exchange on every consuming service, with payload and `x-death` metadata preserved | Forced-failure test, then a full saga re-run with no regressions |
 | 6 | **Nearest-driver routing** | Haversine distance, driver claimed atomically | 10 concurrent requests vs 1 driver → exactly 1 success; transaction rollback test |
 | 7 | **Observability across services** | OpenTelemetry context propagated manually through RabbitMQ headers; pino logs stamped with `traceId` | One order = one trace, 7 services, 83 spans in Jaeger |
-| 8 | **Abuse protection and access control** | Valkey sliding-window limiter at the Gateway; role carried in the JWT and enforced where the resource lives | `429`s triggered live; admin `201` vs non-admin `403` |
+| 8 | **Abuse protection and access control** | Valkey sliding-window limiter at the Gateway; role carried in the JWT and enforced where the resource lives; order reads scoped to the owner | `429`s triggered live; admin `201` vs non-admin `403`; another user's `GET /orders/:id` returns `404` |
 | 9 | **Reminders without spam or misses** | A swept, advisory-locked job reminds each abandoned cart once per stretch of activity; publish-then-record ordering turns a failure into a deduplicated duplicate instead of a lost reminder | Vitest on real Postgres plus a live Docker run: reminded once, silent on later sweeps, re-armed by new activity, checkout clears the cart |
 
 ### Bugs that testing and scaling caught
@@ -219,6 +221,8 @@ A project is more believable for what broke. These surfaced through tests, scali
 - **Rounding:** `.toFixed()` with no argument turned `99.98` into `100`.
 - **Checkout never cleared the cart:** found while designing abandonment recovery. `placeOrder` took items from the request body and left `cart_items` alone, so the job would have reminded people who had already bought. Fixed inside the order transaction.
 - **Paid orders never confirmed their stock reservation:** found by watching a delivered order for ten minutes. Inventory never learned that payment succeeded, so the reservation stayed `PENDING` and the expiry job released the sold unit back into stock. Fixed by having Inventory consume `PaymentSucceeded` and confirm the order's reservations (idempotent, `PENDING` rows only), with three tests and a live recheck past the expiry time.
+
+![Reservation stays CONFIRMED and bread stays at 199 available, past the 10-minute expiry](assets/watch-loop.png)
 
 <p align="right"><sub><a href="#top">↑ back to top</a></sub></p>
 
@@ -303,18 +307,21 @@ Details for each suite are in [docs/deep-dives.md](docs/deep-dives.md#testing-in
 | --- | --- | :---: |
 | Phases 0–3 | Foundation, inventory & concurrency, order saga, delivery & routing | ✅ |
 | Phase 4 | Notification, Gateway and Catalog test suites | ✅ |
-| Hardening | DLQ, rate limiting, role enforcement, real health checks, 70 tests at that stage | ✅ |
-| CI | Per-service GitHub Actions, all green | ✅ |
+| Hardening | DLQ, rate limiting, role enforcement, real health checks | ✅ |
+| CI | Per-service GitHub Actions | ✅ |
 | Scale + observability | Multi-instance proof, advisory locks, tracing, structured logs | ✅ |
 | Cart & multi-item orders | Persisted cart, snapshotted prices, partial compensation | ✅ |
+| Cart abandonment recovery | Swept, advisory-locked reminders; checkout clears the cart | ✅ |
 | Deployment | Production compose, Caddyfile and guide written; not deployed (the demo runs locally) | ⏸️ Not planned |
-| Stage 5 | Cart abandonment recovery ✅, reviews, loyalty, reorder/subscriptions | 🔄 |
+| Reviews, loyalty, reorder/subscriptions, real payment provider | Designed, not built | ⏸️ Not planned |
 
 ### Known gaps
 
 - [ ] **Atomic publish.** An order is committed to Postgres and then published to RabbitMQ, so a crash between the two can leave an order in `PENDING`. A transactional outbox would close this.
+- [ ] **Payments are simulated.** A real provider (for example Razorpay in test mode) would make payment asynchronous through webhooks, and needs a public URL and a frontend to demo.
 - [ ] The cart is cleared when an order is created, not when payment succeeds, so a failed saga leaves an empty cart.
 - [ ] Reservations expire after 10 minutes, so a payment slower than that (a real provider with webhooks) would lose its reservation before confirmation arrives.
+- [ ] `quantity_reserved` has no non-negative check, so a reservation released without a matching reserve can push it below zero. A `CHECK` constraint would catch it.
 - [ ] `Retry-After` and `X-RateLimit-*` headers on `429` responses.
 - [ ] Multi-IP isolation check and Vitest coverage for the rate limiter.
 - [ ] Gateway sets `trust proxy` to 1 for Caddy; verify on the deployed server that the rate limiter keys on the real client IP, not Caddy's.
