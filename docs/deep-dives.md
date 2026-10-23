@@ -162,7 +162,7 @@ Inventory's compose entry has no fixed host port so it can be scaled; other serv
 - **RabbitMQ context propagation** is manual: the publisher injects the active trace into message headers, and the subscriber extracts it and wraps the handler so downstream spans join the same trace.
 - **`errorHandler.ts`** (identical across services) logs exactly one structured line per error: `warn` with no stack for an expected 4xx, `error` with the full stack for an unexpected 5xx.
 
-**Verified live.** One order's trace starts at the Gateway's `POST /orders` and runs through Order's synchronous Catalog lookup and every async hop: **7 services, 76 spans**.
+**Verified live.** One order's trace starts at the Gateway's `POST /orders` and runs through Order's synchronous Catalog lookup and every async hop: **7 services, 83 spans**.
 
 ```
 gateway POST → order POST → order GET (60.87ms) → catalog GET (47.86ms)
