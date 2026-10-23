@@ -307,7 +307,7 @@ Details for each suite are in [docs/deep-dives.md](docs/deep-dives.md#testing-in
 | CI | Per-service GitHub Actions, all green | ✅ |
 | Scale + observability | Multi-instance proof, advisory locks, tracing, structured logs | ✅ |
 | Cart & multi-item orders | Persisted cart, snapshotted prices, partial compensation | ✅ |
-| **Deployment** | Single VPS behind Caddy (production compose and guide written), live demo, post-deploy saga check | ⏭️ Next |
+| Deployment | Production compose, Caddyfile and guide written; not deployed (the demo runs locally) | ⏸️ Not planned |
 | Stage 5 | Cart abandonment recovery ✅, reviews, loyalty, reorder/subscriptions | 🔄 |
 
 ### Known gaps
